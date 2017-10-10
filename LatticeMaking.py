@@ -30,7 +30,7 @@ Methods:
 import numpy as np
 import itertools as it
 import scipy.sparse as sps
-
+from numpy import linalg as la
 #===========================================================================================================================================
 # returns a square lattice with the corresponding edges
 #===========================================================================================================================================
@@ -55,6 +55,9 @@ def squareLattice(width, height=None, ax=1.0, ay=1.0, randomize=False, randomBox
         [0, 2],
         [1, 3],
         [0, 3]]))
+    
+    squareLattice(2)[0] is the vertices array
+    squareLattice(2)[1] is the edge array
     """
     if height is None:
         height = width
@@ -95,6 +98,45 @@ def getBoundaryVerts(edgeArray):
     bulkVert = [not bVert for bVert in boundaryVert]
     return (np.arange(numOfVerts)[boundaryVert],  np.arange(numOfVerts)[bulkVert])
 #===========================================================================================================================================
+
+#===========================================================================================================================================
+# returns the indices of the input node and the output node
+#===========================================================================================================================================    
+def getIONodes(verts, height):
+    """
+    getIONodes(verts, height)
+     returns the indices of the input node and the output node. This is done in the dumbest possible way: 
+         Input = indices of the left most verts. There's (height) many of them 
+         Output = indices of right most verts. There's (height) many of them 
+    
+    Example: sq = squareLattice(2)[0];
+             getIONodes(sq, 2)
+    Out: (array([0, 1], dtype=int64), array([2, 3], dtype=int64))
+    """
+        
+    #select the x components of the vertices 
+    inIndx = np.argpartition(verts[:, 0], height)
+    outIndx = np.argpartition(verts[:,0], -height)
+    return (inIndx[:height], outIndx[-height:])
+#===========================================================================================================================================
+
+#===========================================================================================================================================
+# returns the corresponding indices in the flattened array
+#===========================================================================================================================================    
+def flattenedIndices(indices, numOfVerts):
+    """
+    The displacement vectors are naturally ordered into (numOfvectors, 2) ararys however for computing the energy and minimization it is
+    better to flatten this array. 
+    This causes inconviniences because we want to be able to select the indices of points, each index would correspond to a 2-vector. 
+    this method return the corresponding indices in the flattened array
+    
+    Example: sq = squareLattice(2)[0];
+             s = getIONodes(sq, 2)[0] #gets input nodes array([0 , 1])
+             s
+    Out: array([0, 1, 2, 3])
+    """
+    return (np.arange(2*numOfVerts).reshape((numOfVerts, 2))[indices]).flatten()    
+#===========================================================================================================================================    
 
 #===========================================================================================================================================
 # returns the adjacency matrix as an array
@@ -194,10 +236,20 @@ def makeDynamicalMat(edgeArray = np.zeros(1), verts = np.zeros(1), RigidityMat= 
         springK = np.diag(np.ones(numOfEdges))
     
     
-    dynMat = np.dot(np.dot(RigidityMat.transpose(), (springK**2)), RigidityMat)
+    dynMat = np.dot(np.dot(RigidityMat.transpose(), np.diag(springK**2)), RigidityMat)
     return dynMat
 #===========================================================================================================================================
 
+#================================================================================================================================================
+# Normalize a vector, assuming that norm(V) != 0 
+#================================================================================================================================================
+def normalizeVec(V):
+    """
+    Returns the vector V normalized to unity. It doesn't do a lot of smart things, the vector 
+    is assumed to not have zero norm and the input array should be 1-dimensional.
+    """
+    return V/la.norm(V)     
+#================================================================================================================================================
     
     
 

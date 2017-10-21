@@ -22,17 +22,20 @@ from LatticeMaking import *
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-width = 10;
-height = 10;
+width = 25;
+height = 4;
 #A square lattice which is randomized 
 (vertices, edges) = squareLattice(width, height=height, randomize=True)
 
 numberOfVerts = len(set(list(edges.flatten())))
 numberOfEdges = edges.size//2
 
-rigidityMatrix = makeRigidityMat(vertices, edges) #defined in LatticeMaking
+edgeMat1 = makeEdgeMatrix1(edges)
+edgeMat2 = makeEdgeMatrix2(edges)
 
-#(boundaryIndices, bulkIndices) = getBoundaryVerts(edges) # I need to know the bulk indices
+#rigidityMatrix = makeRigidityMat(vertices, edges) #defined in LatticeMaking
+
+(boundaryIndices, bulkIndices) = getBoundaryVerts(edges) # I need to know the bulk indices
 
 #(inputIndices, outputIndices) = getIONodes(vertices, height)
 
@@ -50,8 +53,8 @@ Un = npr.rand(2*numberOfVerts) #defined in LatticeMaking, returns a normalized v
 uN = Un.reshape((numberOfVerts, 2))
 #inputDisp1 = (input1[:, np.newaxis]*uN[inputIndices]).flatten()
 #inputDisp2 = (input2[:, np.newaxis]*uN[inputIndices]).flatten()
-inputDisp1 = np.array([-1, -1, 1, 1, 1, 1, -1, -1])
-inputDisp2 = np.array([-1, -1, 1, 1, -1, -1, 1, 1])
+inputDisp1 = 0.3*np.array([-1, -1, 1, 1, 1, 1, -1, -1])
+inputDisp2 = 0.3*np.array([-1, -1, 1, 1, -1, -1, 1, 1])
 inputDisps = (inputDisp1, inputDisp2)
 
 #outputDisp1 = npr.rand(uN[outputIndices].size)
@@ -63,7 +66,7 @@ k0 = np.ones(numberOfEdges)
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 #================================================================================================================================================
-# After setting the boundary indices to the desired values, calculates the energy from the dynamical matrix.
+# After setting the boundary indices to the desired values, calculates the energy using the edge matrix.
 #================================================================================================================================================
 def energy(u, DynMat, inputCase, inputInds = flattenedInInds):
     """
@@ -75,7 +78,7 @@ def energy(u, DynMat, inputCase, inputInds = flattenedInInds):
     inputCase is an integer that runs over the possible inputs, for now it is just 0 or 1
     """
     u[inputInds] = inputDisps[inputCase]
-    return np.dot(np.dot(u.transpose(), DynMat), u)
+    return 0.5*np.dot(np.dot(u.transpose(), DynMat), u)
 #================================================================================================================================================
     
 #================================================================================================================================================
@@ -98,13 +101,14 @@ def energy_Der(u, DynMat, inputCase, inputInds = flattenedInInds):
 def energy_Hess(u, DynMat, inputInds = flattenedInInds):
     return DynMat
 #================================================================================================================================================  
-    
+
 #================================================================================================================================================
 # This the cost function that will be minimized E/lowestEigVal
 #================================================================================================================================================
-def cost(springK, flatOutInds=flattenedOutInds):
+def cost(points, springK=k0, flatOutInds=flattenedOutInds,eMat1=edgeMat1, eMat2=edgeMat2):
    # springK, bulkPoints = np.diag(variables[:numberOfEdges]), variables[numberOfEdges:]
   # U[bulkInds] = bulkPoints
+  rigidityMatrix = makeRigidityMat(points, edgeMat1=eMat1, edgeMat2=eMat2)
   DynMat = makeDynamicalMat(RigidityMat= rigidityMatrix,
                               springK=springK,  numOfVerts=numberOfVerts, numOfEdges=numberOfEdges)
   
@@ -115,11 +119,8 @@ def cost(springK, flatOutInds=flattenedOutInds):
 
 #================================================================================================================================================
 
-
-
-
-def test(springK):
-
+def test(points, springK=k0, eMat1=edgeMat1, eMat2=edgeMat2):
+    rigidityMatrix = makeRigidityMat(points, edgeMat1=eMat1, edgeMat2=eMat2)
     dynMat = makeDynamicalMat(RigidityMat= rigidityMatrix,
                               springK=springK,  numOfVerts=numberOfVerts, numOfEdges=numberOfEdges)
     res0 = op.minimize(energy, Un, method='Newton-CG', args=(dynMat, 0), jac=energy_Der, hess=energy_Hess, options={'xtol': 1e-8, 'disp': False}) 
@@ -128,7 +129,7 @@ def test(springK):
 
 
 
-res = op.minimize(cost, k0, method='BFGS', options={'disp': True})
-#test(res.x)
+res = op.minimize(cost, vertices, method='BFGS', options={'disp': True})
+test(res.x)
 
 

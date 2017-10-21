@@ -4,7 +4,7 @@ Created on Fri Sep 29 06:27:18 2017
 
 @author: Salem
 
-This script generates the required lattices which will be used by other lattices.
+This script generates the required 3D lattices which will be used by other scripts.
 
 Variables: 
     edgeArray: Appears in the methods, it's (numOfEdges, 2) array containing the indices of the vertices. 
@@ -31,12 +31,10 @@ import numpy as np
 import itertools as it
 import scipy.sparse as sps
 from numpy import linalg as la
-from enum import Enum
-
 #===========================================================================================================================================
 # returns a square lattice with the corresponding edges
 #===========================================================================================================================================
-def squareLattice(width, height=None, ax=1.0, ay=1.0, randomize=False, randomBox=0):
+def squareLattice3D(width, height=None, thickness=None,  ax=1.0, ay=1.0, randomize=False, randomBox=0):
 
     """
     squareLattice(width, height=None, ax=1.0, ay=1.0, randomize=False, randomBox=0)
@@ -64,6 +62,9 @@ def squareLattice(width, height=None, ax=1.0, ay=1.0, randomize=False, randomBox
     if height is None:
         height = width
         
+    if thickness is None:
+        thickness = width
+        
     if randomize and randomBox == 0.0:
         randomBox = 1.0
     elif not randomize:
@@ -79,18 +80,6 @@ def squareLattice(width, height=None, ax=1.0, ay=1.0, randomize=False, randomBox
     return (vertices, np.array(edges))
 #===========================================================================================================================================
  
-#===========================================================================================================================================
-# returns an edge array where every point is connected to any other
-#===========================================================================================================================================    
-def connect_all_verts(num_of_verts):
-    edge_array = [];
-    #loop over all points
-    for vert_index in range(num_of_verts - 1):
-        # for each point make an edge to every other points with index bigger than it's own index
-        for neib_index in range(vert_index + 1, num_of_verts):
-            edge_array.append([vert_index, neib_index])
-    #return all the edges together into a single edge array
-    return np.array(edge_array)
 #===========================================================================================================================================
 # returns the indices of the boundary and bulk indices
 #===========================================================================================================================================    
@@ -272,7 +261,7 @@ def makeEdgeMatrix2(edgeArray, numOfVerts=-1, numOfEdges=-1):
 #===========================================================================================================================================
 # returns the Rigidity Matrix as an array
 #===========================================================================================================================================  
-def makeRigidityMat(verts, edgeArray=np.array([0]), numOfVerts=-1, numOfEdges=-1, edgeMat1 = np.zeros(1), edgeMat2 = np.zeros(1)):
+def makeRigidityMat(verts, edgeArray=np.array([0]), numOfVerts=-1, numOfEdges=-1, edgeMat1 = [0], edgeMat2 = [0]):
     """
     makeRigidityMat(verts, edgeArray, numOfVerts=-1, numOfEdges=-1,method):
         Takes in the edgeArray then finds Rigidity matrix. The rigidity matrix helps
@@ -384,44 +373,11 @@ def normalizeVec(V):
     is assumed to not have zero norm and the input array should be 1-dimensional.
     """
     V = V/la.norm(V)   
-    return   V
-#================================================================================================================================================
-
-#================================================================================================================================================
-# returns the number of edges given the edge array
-#================================================================================================================================================
-def get_num_of_edges(edge_array):
-    """
-    This method checks the shape of the edge array and returns an error if the number of neighbors is not equal to 2. 
-    If there are no errors the number of edges is returned
-    """
-     #check that edge_array dimensions makes sense
-    num_of_edges, num_Of_Neibs  = edge_array.shape[0], edge_array.shape[1]
-
-    if(num_Of_Neibs != 2):
-        raise NameError("Something is wrong with the edge array. Number of neighbors should be 2")
-        
-    return   num_of_edges
+    return   
 #================================================================================================================================================
     
-#================================================================================================================================================
-# returns the number of edges given the edge array
-#================================================================================================================================================
-def get_num_of_verts(vertices, dimensionality = 2):
-    """
-    This method checks the shape of the vertex array and returns an error if the dimensionality of space is not equal to 2. 
-    If there are no errors the number of vertices is returned.
     
-    dimentionality is the number of spacial dimensions will be taken as 2 by default.
-    """
-     #check that vertices dimensions makes sense
-    num_of_verts, num_Of_dimensions  = vertices.shape[0], vertices.shape[1]
 
-    if(num_Of_dimensions != dimensionality):
-        raise NameError("Something is wrong with the vertex array. Dimensions of space should be 2")
-        
-    return   num_of_verts
-#================================================================================================================================================
  
     
     

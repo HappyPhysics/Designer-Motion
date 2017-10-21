@@ -20,13 +20,13 @@ from numpy import linalg as la
 import scipy.optimize as op
 importlib.reload(LatticeMaking)
 
-from LatticeMaking import *
+from LatticeMaking import *  #custom
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #It's convineit to make these variables global, they also don't change after initializing
 global U, rigidityMatrix, numberOfEdges, numberOfVerts
 
-width = 20; #same as height
+width = 4; #same as height
 
 #A square lattice which is randomized 
 (vertices, edges) = squareLattice(width, randomize=True)
@@ -34,15 +34,17 @@ width = 20; #same as height
 numberOfVerts = len(set(list(edges.flatten())))
 numberOfEdges = edges.size//2
 
-rigidityMatrix = makeRigidityMat(vertices, edges) #defined in LatticeMaking
+rigidityMatrix = makeRigidityMat(vertices, edgeArray=edges) #defined in LatticeMaking
 
 (boundaryIndices, bulkIndices) = getBoundaryVerts(edges) #defined in LatticeMaking
 
 #generate the desired displacement
-U = normalizeVec(npr.rand(2*numberOfVerts)) #defined in LatticeMaking, returns a normalized vector
+U = npr.rand(2*numberOfVerts) - 0.5 #defined in LatticeMaking, returns a normalized vector
 U[:3] = np.array([0, 0, 0])  #excludes rotations and translations from the deformation, but not from DynMat eigenmodes
+normalizeVec(U)
 v = U[bulkIndices];  # These will be minimized over
 
+k1 = npr.rand(numberOfEdges) - 0.5
 k0 = np.ones(numberOfEdges)
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -96,7 +98,7 @@ def energy(u, DynMat, boundaryInds = boundaryIndices):
     TO DO: A more general energy function that takes in the boundary conditions directly
     """
     u[boundaryInds] = U[boundaryInds]
-    return np.dot(np.dot(u.transpose(), DynMat), u)
+    return 0.5* np.dot(np.dot(u.transpose(), DynMat), u)
 #================================================================================================================================================
     
 #================================================================================================================================================
@@ -129,16 +131,35 @@ def cost(springK, boundaryInds=boundaryIndices, bulkInds=bulkIndices):
    # springK, bulkPoints = np.diag(variables[:numberOfEdges]), variables[numberOfEdges:]
   # U[bulkInds] = bulkPoints
   DynMat = makeDynamicalMat(RigidityMat= rigidityMatrix,
-                              springK=springK,  numOfVerts=numberOfVerts, numOfEdges=numberOfEdges)
+                              springK=springK,  numOfVerts=numberOfVerts, numOfEdges=numberOfEdges, negativeK=True)
   
-  res = op.minimize(energy, U, method='Newton-CG', args=(DynMat,), jac=energy_Der, hess=energy_Hess, options={'xtol': 1e-8, 'disp': False})
-  uEnergy = res.fun
+  res0 = op.minimize(energy, U, method='Newton-CG', args=(DynMat,), jac=energy_Der, hess=energy_Hess, options={'xtol': 1e-8, 'disp': False})
+  uEnergy = res0.fun
   minEnergy = lowestEigenVal(DynMat)
-  return uEnergy/minEnergy
+  return uEnergy/minEnergy - 5* minEnergy
 #================================================================================================================================================
 
-
-#res = op.minimize(cost, k0, method='BFGS', options={'disp': True})
+#================================================================================================================================================
+# This the cost function that will be minimized E/lowestEigVal
+#================================================================================================================================================
+def test(newK, boundaryInds=boundaryIndices, bulkInds=bulkIndices):
+   # springK, bulkPoints = np.diag(variables[:numberOfEdges]), variables[numberOfEdges:]
+  # U[bulkInds] = bulkPoints
+  DynMat = makeDynamicalMat(RigidityMat= rigidityMatrix,
+                              springK=newK,  numOfVerts=numberOfVerts, numOfEdges=numberOfEdges, negativeK=True)
+  
+  res0 = op.minimize(energy, U, method='Newton-CG', args=(DynMat,), jac=energy_Der, hess=energy_Hess, options={'xtol': 1e-8, 'disp': False})
+  uEnergy = res0.fun
+  minEnergy = lowestEigenVal(DynMat)
+  print("Spring Constants: ", newK)
+  print("energy Eigs: ",  (la.eigvalsh(DynMat)[:5])) 
+  print("energy: ", uEnergy)
+  
+  return 
+#================================================================================================================================================
+  
+res = op.minimize(cost, k1, method='BFGS', options={'disp': True})
+#test(res.x)
 #runResults = RunData("20-by-20-square", 20, vertices, edges, U[boundaryIndices], res)
 
 

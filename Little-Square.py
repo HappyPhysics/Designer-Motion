@@ -29,9 +29,9 @@ importlib.reload(LatticeMaking)
 from LatticeMaking import *  #custom
 from enum import Enum
 
-NUM_OF_ADDED_VERTS = 11;
+NUM_OF_ADDED_VERTS = 5;
 NUM_OF_DIMENSIONS = 2;
-NUM_OF_EDGES = (NUM_OF_ADDED_VERTS + 4) * (NUM_OF_ADDED_VERTS + 3)//2
+#NUM_OF_EDGES = (NUM_OF_ADDED_VERTS + 4) * (NUM_OF_ADDED_VERTS + 3)//2
 
 
 # this is the part we want to control the motion of, these vertices will be fixed.
@@ -43,42 +43,64 @@ class DispType(Enum):
     random = 1
     isotropic = 2
 
-
+#this enumumerates the possible ways to connect the added vertices to each other and the square
+class EdgeTypes(Enum):
+    all_connected = 1
+    all_to_square = 2
+    square_lattice = 3
 #================================================================================================================================================
 # Runs the minimization procedure to return the results for the spring constants and the positions
 #================================================================================================================================================
-def find_desired_lattice(deformationType = DispType.random):
+def find_desired_lattice(deformationType = DispType.random, edgeType = EdgeTypes.all_connected, num_of_added_verts = NUM_OF_ADDED_VERTS):
     """
     """
+    #initialize test results so that the while loop goes at least once
+    test_result = True
+    
+    #how many times the minimization procedure ran
+    trial_num = 0
+    
     #initialize the lattice
-    vertices, edge_array = initialize_lattice()
+    vertices, edge_array = initialize_lattice(edgeType, num_of_added_verts)
     
-    num_of_verts = NUM_OF_ADDED_VERTS + 4
-    num_of_edges = NUM_OF_EDGES
+    num_of_verts = vertices.size//2
+    num_of_edges = edge_array.size//2
     
-    # connectivity dependent matrices that are used to calculate the rigidity matrix
-    edgeMat1 = makeEdgeMatrix1(edge_array, numOfEdges=num_of_edges, numOfVerts=num_of_verts)
-    edgeMat2 = makeEdgeMatrix2(edge_array, numOfEdges=num_of_edges, numOfVerts=num_of_verts)
-    
-    #generate displacement field for the square
+    #generate displacement field for the square. outside loop because we don't want to keep changing this
     U = displacement_field(vertices, num_of_vertices=num_of_verts, DeformType=deformationType)
+    
+    while (test_result):
+    
+    
+        # connectivity dependent matrices that are used to calculate the rigidity matrix
+        edgeMat1 = makeEdgeMatrix1(edge_array, numOfEdges=num_of_edges, numOfVerts=num_of_verts)
+        edgeMat2 = makeEdgeMatrix2(edge_array, numOfEdges=num_of_edges, numOfVerts=num_of_verts)
+    
 
-   #initalize var: points and spring constants
-    k0  = np.ones(num_of_edges)
-    var0 = np.hstack((vertices.flatten(), k0))
+        #initalize var: points and spring constants
+        k0  = npr.rand(num_of_edges)
+        k1 = np.ones(num_of_edges)
+        var0 = np.hstack((vertices.flatten(), k0))
+        var1 = np.hstack((vertices.flatten(), k1))
     
-    #minimize cost funcion
-    res = op.minimize(cost_function, var0, method='BFGS',args=(U, edgeMat1, edgeMat2), options={'disp': True})
-    
-    test_results(res.x, U, edgeMat1, edgeMat2)
-    
+        #minimize cost funcion
+        res = op.minimize(cost_function, var0, method='BFGS',args=(U, edgeMat1, edgeMat2, num_of_edges, num_of_verts), options={'disp': False})
+        
+        trial_num += 1; print("Trial Number: ", trial_num)
+        
+        #if this returns true then keep trying, checks if U is close to the minimum on the little_square 
+        test_result = test_results(res.x, U, edgeMat1, edgeMat2, num_of_edges, num_of_verts)
+        
+        #initialize the lattice
+        vertices, edge_array = initialize_lattice(edgeType, num_of_added_verts)
+        
     return res
     
 
 #================================================================================================================================================
 # The cost function penalizes energy of the desired displacement of the square vertices
 #================================================================================================================================================
-def cost_function(var, disp_field, eMat1, eMat2):
+def cost_function(var, disp_field, eMat1, eMat2, num_of_edges,num_of_vertices):
     """
     var is the combined variables to be minimized over. It represents all the vertices and spring constants
     var[:2*num_of_vertices] are the points 
@@ -88,11 +110,9 @@ def cost_function(var, disp_field, eMat1, eMat2):
     #the square positions are fixed
     var[:8] = little_square.flatten()
     
-    num_of_vertices = NUM_OF_ADDED_VERTS + 4
-    num_of_edges = NUM_OF_EDGES
     
-   # var[:num_of_vertices] are the points of the lattice
-   # var[num_of_vertices:] are the spring constants
+   # var[:2*num_of_vertices] are the points of the lattice
+   # var[2*num_of_vertices:] are the spring constants
    
     rigidityMatrix = makeRigidityMat(var[:2*num_of_vertices], edgeMat1=eMat1, edgeMat2=eMat2)[:, 3:]
     
@@ -104,15 +124,19 @@ def cost_function(var, disp_field, eMat1, eMat2):
     # minimize the energy subject to the constraint that the square displacements are fixed
     res0 = op.minimize(energy, disp_field, method='Newton-CG', args=(DynMat, disp_field[:5]), jac=energy_Der, 
                        hess=energy_Hess, options={'xtol': 1e-8, 'disp': False})
-   
+    
+    #get the lowest eigen vector
+    #lowestEigVector = normalizeVec(la.eigh(DynMat)[1][:5,0])
+    
+    lowestEs = lowestEigenVals(DynMat)
     # minimize this energy with respect to the lowest energy eigenvalue
-    return res0.fun/lowestEigenVal(DynMat) 
+    return res0.fun/lowestEs[0] + 0.1 * (lowestEs[0]/lowestEs[1])**2
 #================================================================================================================================================    
 
 #================================================================================================================================================
 # Initializing the lattice
 #================================================================================================================================================
-def initialize_lattice():
+def initialize_lattice(edgeType = EdgeTypes.all_connected, num_of_added_verts = NUM_OF_ADDED_VERTS):
     """
     This method returns an array of position vectors (vertices) and an array of edge vectors (edge_array).
     
@@ -140,13 +164,28 @@ def initialize_lattice():
     """
 
     # this part I call grey matter, these are the added to the square vertices 
-    grey_matter = npr.rand(NUM_OF_ADDED_VERTS, NUM_OF_DIMENSIONS)*2.0 - 0.5
+    gray_matter = npr.rand(num_of_added_verts, NUM_OF_DIMENSIONS)*2.0 - 0.5
 
     # add them together to get the entire list of vertices
-    vertices = np.vstack((little_square, grey_matter))
+    vertices = np.vstack((little_square, gray_matter))
     
+    if(edgeType == EdgeTypes.all_connected):
     # make the edge array, connect all points for now
-    edge_array = connect_all_verts(get_num_of_verts(vertices))
+        edge_array = connect_all_verts(get_num_of_verts(vertices))
+        
+    elif(edgeType == EdgeTypes.all_to_square):
+        #connect each gray matter vertex to the square vertices
+        edge_array = connect_all_to_square(num_of_added_verts)
+    elif(edgeType == EdgeTypes.square_lattice):
+        #add an internal square lattice to the initial square
+        width=int(num_of_added_verts)   
+        verts, edges =  squareLattice(width=width, randomize=True, ax=1/width)
+        
+        #connect to the little_square
+        edge_array = np.vstack(((edges + 4), [0,0], [width - 1, 1], [width**2 - width - 1, 3], [width**2 - 1, 2]))
+        
+        #add the two square to vertices array
+        vertices = np.vstack((little_square, verts))
         
     return vertices, edge_array
 #================================================================================================================================================
@@ -169,18 +208,7 @@ def displacement_field(vertices, DeformType = DispType.random, num_of_vertices =
     
     elif(DeformType == DispType.isotropic):
         return normalizeVec(vertices.flatten()[3:])
-#================================================================================================================================================    
-
-#================================================================================================================================================
-# makes a random displacement field 
-#================================================================================================================================================  
-def isotropic_contraction(vertices):
-    """
-    
-    """
-    return normalizeVec(vertices.flatten()[3:])
-    
-#================================================================================================================================================  
+#================================================================================================================================================     
     
 #================================================================================================================================================
 # After setting the boundary indices to the desired values, calculates the energy using the edge matrix.
@@ -221,8 +249,8 @@ def energy_Hess(u, DynMat,  squareDisp):
 #================================================================================================================================================
 # Returns the lowest eignevalue of the dynamical matrix, exluding the rigid motions of course.
 #================================================================================================================================================
-def lowestEigenVals(DynMat):    
-    return (la.eigvalsh(0.5*DynMat)[:6])
+def lowestEigenVals(DynMat, num_of_eigs = 2):    
+    return (la.eigvalsh(0.5*DynMat)[:num_of_eigs])
 #================================================================================================================================================
     
 #================================================================================================================================================
@@ -236,8 +264,11 @@ def lowestEigenVal(DynMat):
 #================================================================================================================================================
 # Test the results of the minimization procedure
 #================================================================================================================================================
-def test_results(new_var, disp_field, eMat1, eMat2):
+def test_results(new_var, disp_field, eMat1, eMat2, num_of_edges, num_of_vertices):
     """
+    this returns True if the dot product between the desired diplacement and the lowest eigen vector after minimization satisfies dotproduct < 0.95.
+    this will result in trying the minimization procedure again.
+    
     var is the combined variables to be minimized over. It represents all the vertices and spring constants
     var[:2*num_of_vertices] are the points 
     var[2*num_of_vertices:] are the spring constants
@@ -245,9 +276,6 @@ def test_results(new_var, disp_field, eMat1, eMat2):
     
     #the square positions are fixed
     new_var[:8] = little_square.flatten()
-    
-    num_of_vertices = NUM_OF_ADDED_VERTS + 4
-    num_of_edges = NUM_OF_EDGES
     
    # var[:num_of_vertices] are the points of the lattice
    # var[num_of_vertices:] are the spring constants
@@ -262,31 +290,50 @@ def test_results(new_var, disp_field, eMat1, eMat2):
     # minimize the energy subject to the constraint that the square displacements are fixed
     res0 = op.minimize(energy, disp_field, method='Newton-CG', args=(DynMat, disp_field[:5]), jac=energy_Der, 
                        hess=energy_Hess, options={'xtol': 1e-8, 'disp': False})
-    print("Number of edges: ", NUM_OF_EDGES)
-    print("energy: ", energy(normalizeVec(res0.x), DynMat, disp_field[:5]))
-    print("eigenvalues: ", lowestEigenVals(DynMat))
-    lowestEigVector = normalizeVec(la.eigh(DynMat)[1][:,0])
-    secondEigVector = normalizeVec(la.eigh(DynMat)[1][:,1])
-    print("dot produce: ", np.dot(lowestEigVector, normalizeVec(res0.x)))
-    print("square disps in lowest: ", normalizeVec(lowestEigVector[:5]))
-    print("square disps in solution: ", normalizeVec(res0.x[:5]))
-    print("square disps in next to lowest: ", normalizeVec(secondEigVector[:5]))
+    
+    lowestEigVector = normalizeVec(la.eigh(DynMat)[1][:5,0])
+    secondEigVector = normalizeVec(la.eigh(DynMat)[1][:5,1])
+    
+    #return false if the vectors are not close enough
+    dotProduct = np.dot(lowestEigVector, normalizeVec(res0.x[:5]))
+    dotProduct *= np.sign(dotProduct)
+    lowestEigVector *= np.sign(dotProduct)
+    
+    gap = (lowestEigenVals(DynMat, 2)[1] - lowestEigenVals(DynMat, 2)[0])/lowestEigenVals(DynMat, 2)[1]
+    if((dotProduct < 0.995) or gap < 0.5):
+        print("dot produce: ", dotProduct, "\n")
+        print("square disps in lowest energy: ", normalizeVec(lowestEigVector[:5]), "\n")
+        print("square disps in desired motion: ", normalizeVec(res0.x[:5]), "\n")
+        print("eigenvalues: ", lowestEigenVals(DynMat, 5), "\n")
+        print("trying again ... \n\n")
+        return True;
+    
+    print("Number of edges: ", rigidityMatrix.shape[0], "\n")
+    print("energy: ", energy(normalizeVec(res0.x), DynMat, disp_field[:5]), "\n")
+    print("eigenvalues: ", lowestEigenVals(DynMat, 5), "\n")
+    print("dot produce: ", dotProduct, "\n")
+    print("square disps in lowest energy: ", lowestEigVector, "\n")
+    print("square disps in desired motion: ", normalizeVec(res0.x[:5]), "\n")
+    print("square disps in next to lowest: ", normalizeVec(secondEigVector[:5]), "\n")
     
     
     plotPoints(new_var[:2*num_of_vertices], num_of_vertices)
 
-    return 
+    return False
 #================================================================================================================================================ 
 
 
 #================================================================================================================================================
 # plots the points as a scatter plot
 #================================================================================================================================================
-def plotPoints(flattenedPoints, num_of_verts):
+def plotPoints(flattenedPoints, num_of_verts = -1):
     """
     Takes in a list of point positions which is then reshaped into a list 2-vectors.
     A different color and size is chosen for the original square vertices.
     """
+    if (num_of_verts < 0):
+       num_of_verts = flattenedPoints.size//2 
+    
     #reshape the points to look like a list of vectors
     Points = flattenedPoints.reshape(num_of_verts, 2)
     

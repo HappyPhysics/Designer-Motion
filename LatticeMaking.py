@@ -36,7 +36,7 @@ from enum import Enum
 #===========================================================================================================================================
 # returns a square lattice with the corresponding edges
 #===========================================================================================================================================
-def squareLattice(width, height=None, ax=1.0, ay=1.0, randomize=False, randomBox=0):
+def squareLattice(width, height=None, ax=1.0, ay=None, randomize=False, randomBox=0):
 
     """
     squareLattice(width, height=None, ax=1.0, ay=1.0, randomize=False, randomBox=0)
@@ -64,6 +64,9 @@ def squareLattice(width, height=None, ax=1.0, ay=1.0, randomize=False, randomBox
     if height is None:
         height = width
         
+    if ay is None:
+        ay = ax
+        
     if randomize and randomBox == 0.0:
         randomBox = 1.0
     elif not randomize:
@@ -83,6 +86,11 @@ def squareLattice(width, height=None, ax=1.0, ay=1.0, randomize=False, randomBox
 # returns an edge array where every point is connected to any other
 #===========================================================================================================================================    
 def connect_all_verts(num_of_verts):
+    """
+    Returns an edge array with all the points connected to each other. 
+    The edge array is a list neighbors, for each edge it gives the an array the indices of the points 
+    attached to it np.array([index1, index2])
+    """
     edge_array = [];
     #loop over all points
     for vert_index in range(num_of_verts - 1):
@@ -91,6 +99,34 @@ def connect_all_verts(num_of_verts):
             edge_array.append([vert_index, neib_index])
     #return all the edges together into a single edge array
     return np.array(edge_array)
+#===========================================================================================================================================
+    
+
+#===========================================================================================================================================
+# returns an edge array where every point is connected to the vertices of a square
+#===========================================================================================================================================    
+def connect_all_to_square(num_of_added_points):
+    """
+    The edge array is a list neighbors, for each edge it gives the an array the indices of the points 
+    attached to it np.array([index1, index2]).
+    
+    This method assumes a square, or 4 initial vertices that are connected to each other. Then (num_of_added_points) points
+    are added to the lattice and each one of these added points is connected to all the vertices of the initial square
+    
+    """
+    edge_array = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
+    #loop over all added point points
+    for vert_index in range(4, 4 + num_of_added_points):
+        # for each point make an edge to every point on the square
+        for neib_index in range(4):
+            edge_array.append([vert_index, neib_index])
+            
+    #return all the edges together into a single edge array
+    return np.array(edge_array)
+#===========================================================================================================================================
+
+
+
 #===========================================================================================================================================
 # returns the indices of the boundary and bulk indices
 #===========================================================================================================================================    
@@ -357,17 +393,19 @@ def makeDynamicalMat(edgeArray = np.zeros(1), verts = np.zeros(1), RigidityMat= 
                 raise NameError("Please either provide the the number of edges or the edge array")
             numOfEdges = edgeArray.size//2
             
+            
     if(not RigidityMat.any()):
-        print("This is not supposed to be true")
+        print("This is not supposed to be true during minimization because we would be using a rigidity matrix")
         if not verts.any():
             raise NameError("Please either provide the rigidity matrix or the vertices for calculating the dynamical matrix")
         if numOfVerts < 1:
             numOfVerts = len(set(list(edgeArray.flatten())))
+
         RigidityMat = makeRigidityMat(verts, edgeArray, numOfVerts, numOfEdges) 
     
     if(not springK.any()):
-        springK = np.diag(np.ones(numOfEdges))
-    
+        springK = np.ones(numOfEdges)
+
     if not negativeK:
         dynMat = np.dot(np.dot(RigidityMat.transpose(), np.diag(springK**2)), RigidityMat)
     else:

@@ -30,4 +30,9 @@ Fourth Commit, 10/21/2017 Saturday. The script little_square:
 - We want to make the square vertices move in a certain way.
 - We add in as many vertices as we want (about 10) and connect every vertex to every other.
 - We then optimize with respect to the spring constants and positions of extra vertices to make the motion happen.
-- It seems to be working the only problem is that the two lowest energy modes are near each other. 
+- It seems to be working the only problem is that the two lowest energy modes are near each other.
+
+Fifth Commit, 10/23/2017 Monday. More on little_square
+- a few additions to little-square.
+-changed the cost function to repel the two lowest eigenvalues. 
+- made the minimization keep re-running until it gives a good result which seems to work nicely.

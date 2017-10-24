@@ -36,10 +36,10 @@ from enum import Enum
 #===========================================================================================================================================
 # returns a square lattice with the corresponding edges
 #===========================================================================================================================================
-def squareLattice(width, height=None, ax=1.0, ay=None, randomize=False, randomBox=0):
+def squareLattice(width, height=None, ax=1.0, ay=None, randomize=False, randomBox=0, is_with_diagonals=True):
 
     """
-    squareLattice(width, height=None, ax=1.0, ay=1.0, randomize=False, randomBox=0)
+    
     returns a square lattice and edges, including diagonals.
     
     width: number of points in the x direction
@@ -47,7 +47,7 @@ def squareLattice(width, height=None, ax=1.0, ay=None, randomize=False, randomBo
     ax,ay: spacing between points in the x,y directions
     randomize: Add randomness to the positions of the points, its a uniform distribution within the box...
     randomBox: fraction of the unit cell that the point might be in. It will be 1 if nothing is entered and randomize is true
-    
+    is_with_diagonals: whether the diagonal bonds (lower-left to upper-right) will be added to the edge array. True by default.
     
     Example: squareLattice(2) = (array([[ 0.,  0.],
         [ 0.,  1.],
@@ -71,14 +71,23 @@ def squareLattice(width, height=None, ax=1.0, ay=None, randomize=False, randomBo
         randomBox = 1.0
     elif not randomize:
         randomBox = 0
-        
+    
+    # a square lattice with random displacements, counting starts from left and goes up column after column 
     vertices = np.array([[i * ax + randomize* np.random.uniform(-randomBox*ax/2.0, randomBox* ax/2.0), j * ay + 
                       randomize* np.random.uniform(-randomBox*ay/2.,randomBox* ay/2.0)]
                       for i in range(width) for j in range(height)])
     
+    #vertical edges
     edges = [[n + m*height, m*height + n + 1] for m in range(width) for n in range(height - 1)]
+    
+    #horizontal edges
     edges.extend([[n*height + m, m + n*height + height] for m in range(height) for n in range(width - 1)])
-    edges.extend([[n*height + m, m + n*height + height + 1] for m in range(height - 1) for n in range(width - 1)])
+    
+    if(is_with_diagonals):
+        #add diagonal edges for each square, diagonals goes lower-left to upper-right
+        edges.extend([[n*height + m, m + n*height + height + 1] for m in range(height - 1) for n in range(width - 1)])
+        
+        
     return (vertices, np.array(edges))
 #===========================================================================================================================================
  
@@ -411,7 +420,8 @@ def makeDynamicalMat(edgeArray = np.zeros(1), verts = np.zeros(1), RigidityMat= 
     else:
         dynMat = np.dot(np.dot(RigidityMat.transpose(), np.diag(springK)), RigidityMat)
     return dynMat
-#===========================================================================================================================================
+#================================================================================================================================================
+
 
 #================================================================================================================================================
 # Normalize a vector, assuming that norm(V) != 0 

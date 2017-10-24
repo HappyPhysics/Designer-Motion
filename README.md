@@ -36,3 +36,12 @@ Fifth Commit, 10/23/2017 Monday. More on little_square
 - a few additions to little-square.
 -changed the cost function to repel the two lowest eigenvalues. 
 - made the minimization keep re-running until it gives a good result which seems to work nicely.
+
+Sixth Commit 10/24/2017. Added many little squares.
+- I want to take the methods for a single squares developed in last commit and use that to tile a plane with many squares.
+- If it works for a single square it should work for all of them. 
+- I've added methods for calculating angles and rotations matrices. 
+- These will be used to change the frame of a square into a canonical frame of reference. 
+- More methods will be added soon. 
+
+

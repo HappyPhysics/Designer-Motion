@@ -37,22 +37,46 @@ NUM_OF_DIMENSIONS = 2;
 # this is the part we want to control the motion of, these vertices will be fixed.
 little_square = np.array([[0.0, 0.0], [0, 1.0], [1.0, 1.0], [1.0, 0.0]])
 
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #This enum represents the different types of deformations that you can have 
 #TODO this def might fit in lattice making
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 class DispType(Enum):
     random = 1
     isotropic = 2
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    
 
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #this enumumerates the possible ways to connect the added vertices to each other and the square
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 class EdgeTypes(Enum):
     all_connected = 1
     all_to_square = 2
     square_lattice = 3
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    
 #================================================================================================================================================
 # Runs the minimization procedure to return the results for the spring constants and the positions
 #================================================================================================================================================
-def find_desired_lattice(deformationType = DispType.random, edgeType = EdgeTypes.all_connected, num_of_added_verts = NUM_OF_ADDED_VERTS):
+def find_desired_square(deformationType = DispType.random, edgeType = EdgeTypes.all_connected, 
+                        num_of_added_verts = NUM_OF_ADDED_VERTS, squareDisp = None):
     """
+    minimizes over the spring constants and positions of the added returns the result of minimization after testing.
+    
+    deformationType: this is an option for generating the desired displacement field. This is overrided if squareDisp is given
+    There are two deformations options now:
+        DispType.random: random displacements. 
+        DispType.isotropic: contraction or expansion towards the origin. 
+        
+    edgeType: type of connectivity of the network
+        EdgeTypes.all_connected: everything is connected to everything.
+        EdgeTypes.all_to_square: every added points is connected to all the vertices of the square.
+        EdgeTypes.square_lattice: an additional square lattice in the interior. corresponding corners connected. 
+        
+        
     """
     #initialize test results so that the while loop goes at least once
     test_result = True
@@ -68,6 +92,9 @@ def find_desired_lattice(deformationType = DispType.random, edgeType = EdgeTypes
     
     #generate displacement field for the square. outside loop because we don't want to keep changing this
     U = displacement_field(vertices, num_of_vertices=num_of_verts, DeformType=deformationType)
+    
+    if(squareDisp is not None):
+        U[:5] = squareDisp
     
     while (test_result):
     

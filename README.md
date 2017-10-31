@@ -42,6 +42,6 @@ Sixth Commit 10/24/2017. Added many little squares.
 - If it works for a single square it should work for all of them. 
 - I've added methods for calculating angles and rotations matrices. 
 - These will be used to change the frame of a square into a canonical frame of reference. 
-- More methods will be added soon. 
+- More methods will be added soon.. 
 
 

@@ -87,6 +87,8 @@ def squareLattice(width, height=None, ax=1.0, ay=None, randomize=False, randomBo
         #add diagonal edges for each square, diagonals goes lower-left to upper-right
         edges.extend([[n*height + m, m + n*height + height + 1] for m in range(height - 1) for n in range(width - 1)])
         
+        #add diagonal edges for each square, diagonals goes upper-left to lower-right
+        edges.extend([[n*height + m + 1, m + n*height + height] for m in range(height - 1) for n in range(width - 1)])
         
     return (vertices, np.array(edges))
 #===========================================================================================================================================
@@ -101,6 +103,7 @@ def connect_all_verts(num_of_verts):
     attached to it np.array([index1, index2])
     """
     edge_array = [];
+    
     #loop over all points
     for vert_index in range(num_of_verts - 1):
         # for each point make an edge to every other points with index bigger than it's own index
@@ -134,7 +137,26 @@ def connect_all_to_square(num_of_added_points):
     return np.array(edge_array)
 #===========================================================================================================================================
 
-
+#===========================================================================================================================================
+# returns an edge array where every added point is maximally connected to the rest
+#===========================================================================================================================================    
+def connect_all_to_gray(original_verts, added_verts):
+    """
+    The edge array is a list neighbors, for each edge it gives the an array the indices of the points 
+    attached to it np.array([index1, index2]).
+    """
+    edge_array = [];
+    
+    #loop over all added point points
+    for vert_index in added_verts:
+        # for each point make an edge to every point on the square
+        for neib_index in np.vstack((original_verts, added_verts)):
+            if(vert_index != neib_index):
+               edge_array.append([vert_index, neib_index])
+            
+    #return all the edges together into a single edge array
+    return np.array(edge_array)
+#===========================================================================================================================================
 
 #===========================================================================================================================================
 # returns the indices of the boundary and bulk indices

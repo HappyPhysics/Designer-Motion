@@ -4,9 +4,9 @@ Created on Tue Oct 24 10:39:08 2017
 
 @author: Salem
 
-This script starts with a square lattice and then divides it into a bunch of squares.
-Then for each square it calls Little-Square and implements the addition of gray matter to
-each square separately. Before calling Little-Square a change of frame must be implemented. 
+This script starts with a lattice and then divides it into a bunch of triangles.
+Then for each triangle it calls Little-Triangle and implements the addition of gray matter to
+each triangle separately. Before calling Little-Triangle a change of frame must be implemented. 
 
 Methods: 
         
@@ -25,61 +25,72 @@ Methods:
 import numpy as np
 import numpy.random as npr
 import LatticeMaking
-import Little_Square
+import Little_Triangle
 from numpy import linalg as la
 from matplotlib import pyplot as plt
 
 
 import importlib
 importlib.reload(LatticeMaking)
-importlib.reload(Little_Square)
+importlib.reload(Little_Triangle)
 
 from LatticeMaking import *  #custom
-from Little_Square import * #custom
+from Little_Triangle import * #custom
 
 
-#===========================================================================================================================================
-# Makes a square lattice and gives a list of squares 
-#===========================================================================================================================================  
+# take in a triangulated mesh.
+# generate a list or an array of triangles with elements (indx1, indx2, indx3)
+# take in the desired displacements of each triangle. 
+# transform the displacements to a canonical frame of reference. 
+# run little_triangle on them. 
+# store the results of all the little triangles. 
+# combine the triangles back to a single mesh adding the extra vertices and edges.
+# minimize the cost function for the whole lattice as a function of the original edges (optional).
 
 
+PI = np.pi
+
+# take in a triangulated lattice.
 LATTICE_WIDTH = 3 # same as height
-SQUARE_LATTICE = squareLattice(LATTICE_WIDTH, is_with_diagonals=False) #contains vertices and edges as tuple
+TRI_LATTICE = triangular_lattice(LATTICE_WIDTH) #contains vertices and edges as tuple
 
 
 #===========================================================================================================================================
 # Finds the lattice that has the desired motion as lowest energy mode
 #=========================================================================================================================================== 
-def find_desired_lattice(disp_type=DispType.random, edgeType = EdgeTypes.all_connected, num_of_added_verts = 3):
+def find_desired_lattice(disp_type=DispType.random, edgeType = EdgeTypes.all_connected, num_of_added_verts = 3, mesh = TRI_LATTICE):
     print("\n")
-    num_of_verts = SQUARE_LATTICE[0].size//2
+    num_of_verts = mesh[0].size//2
     
     # define the desired displacement field of the entire lattice
-    desired_disp = make_desired_disp(SQUARE_LATTICE[0], DeformType=disp_type, num_of_vertices=num_of_verts)
+    desired_disp = make_desired_disp(mesh[0], DeformType=disp_type, num_of_vertices=num_of_verts)
     desired_disp = np.hstack(([0,0,0], desired_disp)).reshape((num_of_verts, 2))
    
+    # take in an edge list, generate a list or an array of triangles with elements (indx1, indx2, indx3)
+    triangles = get_mesh_faces(mesh[1])
+    
     
     results = []
   
-    # Pick out the squares one by one. 
-    for vert_indx in range(num_of_verts):
+    # run over all the triangeles or faces of the mesh. 
+    for tri_ID, triangle in enumerate(triangles):
+            
+        #rotate by 45 degrees so that the first edge is not in the x axis 
+        triangle_verts = np.dot(np.array(mesh[0][triangle]), rotation_matrix(PI/4))
         
-        #check if the vert is a lower left corner of a square, these index the different squares
-        if(get_square_indices(vert_indx, num_of_verts) is None):
-            continue
+        #get the indices of the triangle as a mask and use it to return the desired displacements of the triangle
+        triangle_disps = desired_disp[triangle]
         
-        #get the indices of the square as a mask and use it to return the desired displacements of the square
-        square_disps = desired_disp[get_square_indices(vert_indx, num_of_verts)]
         
-        # change thier frame of reference to the canonical one (from little square).
-        canon_disps = lab_to_square_frame(square_disps)
+        # change thier frame of reference to the canonical one (from little triangle).
+        canon_disps = np.array(lab_to_triangle_frame(triangle_disps))
+       
         
-        # call little square to add the gray matter
-        res = find_desired_square(num_of_added_verts=num_of_added_verts, squareDisp=canon_disps, edgeType=edgeType,
-                            square_ID=vert_indx - (vert_indx//LATTICE_WIDTH) + 1)
         
-        #takes the positions and translates them to the right position
-        res[0] = res[0] + [vert_indx//LATTICE_WIDTH, np.mod(vert_indx, LATTICE_WIDTH)]
+        # call little triangle to add the gray matter
+        res = find_desired_face(num_of_added_verts=num_of_added_verts, face_Disps=canon_disps,
+                           face_verts=triangle_verts, face_ID=tri_ID + 1)
+        
          
         results.append(res)
         
@@ -93,39 +104,34 @@ def find_desired_lattice(disp_type=DispType.random, edgeType = EdgeTypes.all_con
     return results
 #===========================================================================================================================================         
         
-
-# store the resulting edges and vertices
-# change the vertices back to original frame of reference.
-# add all of the squares together to get the entire final lattice. 
-# test that lowest energy modes of the lattice satisfy the desired motion.
  
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-#this enumumerates the possible outputs of get_square_indices
+#this enumumerates the possible outputs of get_triangle_indices
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 class OutType(Enum):
     mask = 1
     indices = 2
-    #square_lattice = 3
+    #TRI_LATTICE = 3
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++       
 #===========================================================================================================================================
-# puts the square displacements in canonical form
+# puts the triangle displacements in canonical form
 #=========================================================================================================================================== 
-def get_square_indices(indx, num_of_verts, output = OutType.mask):
+def get_triangle_indices(indx, num_of_verts, output = OutType.mask):
     """
     description
     
     """
     mask = np.zeros(num_of_verts, dtype=np.bool)
     
-    #ignore the indices at the boundaries that are not at the Lower-Left corner of a square 
+    #ignore the indices at the boundaries that are not at the Lower-Left corner of a triangle 
     if np.mod(indx + 1, LATTICE_WIDTH) == 0 or indx >= LATTICE_WIDTH *(LATTICE_WIDTH - 1):
-        #return nothing because they do not represent a square
+        #return nothing because they do not represent a triangle
         return None
     
     if output is not OutType.mask:
         return np.array([indx, indx + 1, indx + LATTICE_WIDTH, indx + LATTICE_WIDTH + 1])
-    # gets the indices of the square corresponding to indx (indx of lower left corner)
+    # gets the indices of the triangle corresponding to indx (indx of lower left corner)
     # start with indx, then find the indices of the other three
     mask[indx] = mask[indx + 1] = mask[indx + LATTICE_WIDTH] = mask[indx + LATTICE_WIDTH + 1] = True
     
@@ -137,14 +143,14 @@ def get_square_indices(indx, num_of_verts, output = OutType.mask):
     # return thier positions and displacements to change frame. 
 
 #===========================================================================================================================================
-# puts the square displacements in canonical form
+# puts the triangle displacements in canonical form
 #===========================================================================================================================================     
-def lab_to_square_frame(square_disps, direction = 1):
+def lab_to_triangle_frame(triangle_disps, direction = 1):
     """
-        Translates between the lab and square frames. square frame is the natural frame introduced in the script Little_Square.
+        Translates between the lab and triangle frames. triangle frame is the natural frame introduced in the script Little_triangle.
         
         Input:
-            direction:  gives the direction of the transformation. If direction is +1 the transformation goes from lab to square frame.
+            direction:  gives the direction of the transformation. If direction is +1 the transformation goes from lab to triangle frame.
                 if direction is -1 then the transformation goes the other way
                 (note that the outputs will have different shapes because of flattening and reshaping)
                 
@@ -152,7 +158,7 @@ def lab_to_square_frame(square_disps, direction = 1):
     """
 
     #subtract the displacement of the first vertex from all the displacements. 
-    new_disps = square_disps - square_disps[0]
+    new_disps = triangle_disps - triangle_disps[0]
 
     # find a rotation that will put the second displacement along the y axis.
     rot_matrix = rotation_matrix(angle_between(new_disps[1], [0, 1]))
@@ -166,16 +172,16 @@ def lab_to_square_frame(square_disps, direction = 1):
 #===========================================================================================================================================    
 
 #===========================================================================================================================================
-# changes from the canonical form of the square back to the "lab" frame (acts on vertex positions)
+# changes from the canonical form of the triangle back to the "lab" frame (acts on vertex positions)
 #===========================================================================================================================================     
-def square_to_lab_frame(c_vertices, square_disps):
+def triangle_to_lab_frame(c_vertices, triangle_disps):
     """
-        Translates the solution given by Little_Square back to the original lab frame. Uses the original square displacements to do so.
+        Translates the solution given by Little_triangle back to the original lab frame. Uses the original triangle displacements to do so.
         
         Input:
-            c_vertices:  vertices return as the solution to the minimization in Little_Square. They shuold be reshaped before an output 
+            c_vertices:  vertices return as the solution to the minimization in Little_triangle. They shuold be reshaped before an output 
             is produced. 
-            square_disps: The original desired square displacements
+            triangle_disps: The original desired triangle displacements
        
         Output: the vertices put in the lab frame and reshaped into a list of 2-vectors          
             
@@ -186,7 +192,7 @@ def square_to_lab_frame(c_vertices, square_disps):
     
     
     #subtract the displacement of the first vertex from all the displacements. 
-    square_disps = np.hstack(([0,0,0], canon_disps)).reshape(())
+    triangle_disps = np.hstack(([0,0,0], canon_disps)).reshape(())
 
     # find a rotation that will put the second displacement along the y axis.
     rot_matrix = rotation_matrix(angle_between(new_disps[1], [0, 1]))
@@ -233,36 +239,36 @@ def angle_between (vec1, vec2):
     
 def recombine_lattice(results):
     #start with the original lattice
-    new_lattice = SQUARE_LATTICE
+    new_lattice = TRI_LATTICE
     
-    #number of vertices in the square lattice
-    num_of_square_verts = SQUARE_LATTICE[0].size//2
+    #number of vertices in the triangle lattice
+    num_of_triangle_verts = TRI_LATTICE[0].size//2
     
     #keep track of the number of added gray matter verts so far
     current_added_verts = 0
     
-    #for each square of the lattice, pick out the squares one by one. 
+    #for each triangle of the lattice, pick out the triangles one by one. 
     for vert_indx in range(num_of_verts):
       
-        #check if the vert is a lower left corner of a square, these indicate the different squares
-        if(get_square_indices(vert_indx, num_of_square_verts, output=OutType.indices) is None):
+        #check if the vert is a lower left corner of a triangle, these indicate the different triangles
+        if(get_triangle_indices(vert_indx, num_of_triangle_verts, output=OutType.indices) is None):
             continue
         
-        square_indices = get_square_indices(vert_indx, num_of_square_verts, output=OutType.indices)
+        triangle_indices = get_triangle_indices(vert_indx, num_of_triangle_verts, output=OutType.indices)
         
-        #the number of extra vertices in the current square
-        num_extra_verts = results[vert_indx - vert_indx//LATTICE_WIDTH][0].shape[0] - LITTLE_SQUARE.shape[0]
-        print("num of extra verts in square ", vert_indx - vert_indx//LATTICE_WIDTH, " is: ", num_extra_verts)
+        #the number of extra vertices in the current triangle
+        num_extra_verts = results[vert_indx - vert_indx//LATTICE_WIDTH][0].shape[0] - LITTLE_triangle.shape[0]
+        print("num of extra verts in triangle ", vert_indx - vert_indx//LATTICE_WIDTH, " is: ", num_extra_verts)
         
-        gray_indices = np.arange(num_extra_verts) + num_of_square_verts + current_added_verts
+        gray_indices = np.arange(num_extra_verts) + num_of_triangle_verts + current_added_verts
         
         
         
         current_added_verts += num_extra_verts
         
         #add the corresponding grey matter to the end of the vertex array.
-    #get the vertices of the square and added gray matter and connect everything 
-    #exclude the square bonds because they are already there
+    #get the vertices of the triangle and added gray matter and connect everything 
+    #exclude the triangle bonds because they are already there
     
     pass
     

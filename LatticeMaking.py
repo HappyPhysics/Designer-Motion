@@ -33,6 +33,8 @@ import scipy.sparse as sps
 from numpy import linalg as la
 from enum import Enum
 
+PI = np.pi
+
 #===========================================================================================================================================
 # returns a square lattice with the corresponding edges
 #===========================================================================================================================================
@@ -92,6 +94,72 @@ def squareLattice(width, height=None, ax=1.0, ay=None, randomize=False, randomBo
         
     return (vertices, np.array(edges))
 #===========================================================================================================================================
+    
+#===========================================================================================================================================
+# returns a triangular lattice with the corresponding edges
+#===========================================================================================================================================
+def triangular_lattice(width, height=None, ax=1.0, ay=None, randomize=False, randomBox=0):
+
+    """
+    
+    returns a square lattice and edges, including diagonals.
+    
+    width: number of points in the x direction
+    height: number of points in the y direction
+    ax,ay: spacing between points in the x,y directions
+    randomize: Add randomness to the positions of the points, its a uniform distribution within the box...
+    randomBox: fraction of the unit cell that the point might be in. It will be 1 if nothing is entered and randomize is true
+    is_with_diagonals: whether the diagonal bonds (lower-left to upper-right) will be added to the edge array. True by default.
+    
+    Example: squareLattice(2) = (array([[ 0.,  0.],
+        [ 0.,  1.],
+        [ 1.,  0.],
+        [ 1.,  1.]]), array([[0, 1],
+        [2, 3],
+        [0, 2],
+        [1, 3],
+        [0, 3]]))
+    
+    squareLattice(2)[0] is the vertices array
+    squareLattice(2)[1] is the edge array
+    """
+    if height is None:
+        height = width
+        
+    if ay is None:
+        ay = ax * np.sin(PI/3)
+        
+    if randomize and randomBox == 0.0:
+        randomBox = 1.0
+    elif not randomize:
+        randomBox = 0
+    
+    # a square lattice with random displacements, counting starts from left and goes up column after column 
+    vertices = np.array([[(i + 0.5* np.mod(j, 2)) * ax + randomize* np.random.uniform(-randomBox*ax/2.0, randomBox* ax/2.0), j * ay + 
+                      randomize* np.random.uniform(-randomBox*ay/2.,randomBox* ay/2.0)]
+                      for j in range(height) for i in range(width)])
+    
+    
+    
+    #horizontal edges
+    edges = [[n + m * width, n + 1 + m * width] for m in range(height) for n in range(width - 1)]
+    
+    # up and to the right, starting from even rows
+    edges.extend([[n + 2*m*width, n + width + 2*m*width] for m in range(height//2) for n in range(width)])
+    
+    # up and to the right, starting from odd rows
+    edges.extend([[n + (2*m + 1)*width, n + width + 1 + (2*m + 1)*width] for m in range((height - 1)//2) for n in range(width - 1)])
+    
+    # down and to the right, starting from even rows
+    edges.extend([[n + 2*m*width, n - width + 2*m*width] for m in range(1, (height + 1)//2) for n in range(width)])
+    
+    # down and to the right, starting from odd rows
+    edges.extend([[n + (2*m + 1)*width, n - width + 1 + (2*m + 1)*width] for m in range((height - 1)//2) for n in range(width - 1)])
+    
+    
+        
+    return (vertices, np.array(edges))
+#===========================================================================================================================================
  
 #===========================================================================================================================================
 # returns an edge array where every point is connected to any other
@@ -138,6 +206,46 @@ def connect_all_to_square(num_of_added_points):
 #===========================================================================================================================================
 
 #===========================================================================================================================================
+# returns an edge array where every point is connected to any other
+#===========================================================================================================================================  
+def connect_all_of_square(num_of_verts):
+    """
+    Returns an edge array with all the points connected to each other. It assumes a square + gray matter
+    The edge array is a list neighbors, for each edge it gives the an array the indices of the points 
+    attached to it np.array([index1, index2]). The edges are ordered in such a way that the square vertices are given first
+    """
+   
+    #connect the square vertices
+    edge_array = [[0, 1], [2, 3], [0, 2], [1, 3], [0, 3], [2, 1]];
+    
+    
+    all_to_gray = connect_all_to_gray(np.arange(4), np.arange(4, num_of_verts))
+    
+    #return all the edges together into a single edge array
+    return np.vstack((np.array(edge_array), all_to_gray))
+#===========================================================================================================================================
+    
+#===========================================================================================================================================
+# returns an edge array where every point is connected to any other
+#===========================================================================================================================================  
+def connect_all_of_tri(num_of_verts):
+    """
+    Returns an edge array with all the points connected to each other. It assumes a triangle + gray matter
+    The edge array is a list neighbors, for each edge it gives the an array the indices of the points 
+    attached to it np.array([index1, index2]). The edges are ordered in such a way that the triangle vertices are given first
+    """
+   
+    #connect the square vertices
+    edge_array = [[0, 1], [1, 2], [0, 2]];
+    
+    
+    all_to_gray = connect_all_to_gray(np.arange(3), np.arange(3, num_of_verts))
+    
+    #return all the edges together into a single edge array
+    return np.vstack((np.array(edge_array), all_to_gray))
+#===========================================================================================================================================
+
+#===========================================================================================================================================
 # returns an edge array where every added point is maximally connected to the rest
 #===========================================================================================================================================    
 def connect_all_to_gray(original_verts, added_verts):
@@ -150,7 +258,12 @@ def connect_all_to_gray(original_verts, added_verts):
     #loop over all added point points
     for vert_index in added_verts:
         # for each point make an edge to every point on the square
-        for neib_index in np.vstack((original_verts, added_verts)):
+        
+        all_verts = np.hstack((original_verts, added_verts))
+            
+        for neib_index in all_verts:
+            #print(vert_index)
+            #print(neib_index)
             if(vert_index != neib_index):
                edge_array.append([vert_index, neib_index])
             
@@ -218,6 +331,28 @@ def flattenedIndices(indices, numOfVerts):
     """
     return (np.arange(2*numOfVerts).reshape((numOfVerts, 2))[indices]).flatten()    
 #===========================================================================================================================================    
+
+
+#===========================================================================================================================================
+# takes in a triangulated mesh and returns the faces as (idx1, idx2, idx3)
+#===========================================================================================================================================    
+def get_mesh_faces(edge_array):
+    """
+    Uses an edge array of mesh to generate the faces of the mesh. For each triangle in the mesh this returns the list of indices 
+    contained in it as a tuple (index1, index2, index3)
+    """
+    triangles = []
+    
+    neibs = neibs_from_edges(edge_array)
+    
+    for edge in edge_array:
+        for vert in get_opposite_verts(neibs, edge):
+            triangle = sorted([edge[0], edge[1], vert])
+            if not (triangle in triangles):
+                triangles.append(sorted([edge[0], edge[1], vert]))
+    
+    return triangles
+#===========================================================================================================================================  
 
 #===========================================================================================================================================
 # returns the adjacency matrix as an array
@@ -494,4 +629,118 @@ def get_num_of_verts(vertices, dimensionality = 2):
 #================================================================================================================================================
  
     
+#================================================================================================================================================
+# plots the points as a scatter plot
+#================================================================================================================================================
+def plotPoints(flattenedPoints, num_of_verts = -1):
+    """
+    Takes in a list of point positions which is then reshaped into a list 2-vectors.
+    A different color and size is chosen for the original square vertices.
+    """
+    if (num_of_verts < 0):
+       num_of_verts = flattenedPoints.size//2 
     
+    #reshape the points to look like a list of vectors
+    Points = flattenedPoints.reshape(num_of_verts, 2)
+    
+    
+    
+    
+    plt.scatter(Points[:,0], Points[:,1])
+#================================================================================================================================================
+
+
+#===============================================================================================================================================
+# Returns a Neighbor list and a map between the edges list and Neighbor list.
+#===============================================================================================================================================
+def neibs_from_edges(edge_list, num_of_verts = -1):
+    """
+    a neighbor list is a list of (num_of_verts) lists each contain the indices of the neighbors of the corresponding verts.
+    The vertex being refered to is assumed to be implied by the position of it's neighbors in the neib_list.
+    
+    We also return a map between the edge_list and the neighbor list.
+    
+             edges = make_cyl_edges(2,3,is_capped=False)
+    Example: neibs_from_edges(edges)
+    [[2, 3, 5, 1],
+  [0, 4, 3, 2],
+  [0, 1, 5, 4],
+  [0, 1, 5, 4],
+  [1, 2, 3, 5],
+  [0, 2, 3, 4]],
+    
+"""
+
+    if (num_of_verts < 1):
+        num_of_verts = len(set(list(edge_list.flatten())))
+    #num_of_edges = edge_list[:, 0].size
+    
+    #for each row neib_list gives the neighbor indices of the vertex correspoding to the row index                       
+    neib_list = [[]]*num_of_verts
+    
+    #For each index in a row, neibs-to-edges will point to the correct edge index  in the edge array               
+    neibs_to_edges = [[]]*num_of_verts 
+     
+    
+    #loop over the vertices      
+    for Vindx in np.nditer(np.arange(num_of_verts)):
+        
+        #for each vertex list it's neighbors by finding the edges it appears in
+        for Eindx, edge in enumerate(edge_list): 
+            
+            #when you find it in one index of the edge, 
+             if edge[0] == Vindx:
+            #add the second index to the neib_list     
+                neib_list[Vindx] = [neib_list[Vindx], edge[1]]  #doing it this way is important for the nesting to come out right
+            #make the map too
+                neibs_to_edges[Vindx] = [neibs_to_edges[Vindx], Eindx]
+                
+                
+            #when you find it in one index of the edge, 
+             elif edge[1] == Vindx:
+            #add the second index to the neib_list     
+                neib_list[Vindx] = [neib_list[Vindx], edge[0]]
+            #make the map too
+                neibs_to_edges[Vindx] = [neibs_to_edges[Vindx], Eindx]
+                
+        neib_list[Vindx] = flatten(neib_list[Vindx]) #flatten the rows to get rid of extra nesting
+        neibs_to_edges[Vindx] = flatten(neibs_to_edges[Vindx])
+     
+                
+    return neib_list
+#===============================================================================================================================================
+
+
+
+#===============================================================================================================================================
+#find the two vertices oppisite to each edge
+#===============================================================================================================================================
+def get_opposite_verts(neib_list, edge):
+    ''' Calculates the dihedral vertices for the triangulation from the neighbor list.
+        return (numEdges, 2) array containing the indices of the two 
+        vertices corresponding to the triangles that include the edge. In other words,
+        return the two vertices opposite to the edge. This is useful for implementing 
+        bending rigidity
+        
+        Neibs can be and array or list
+        '''
+       
+    #find the two triangles intersecting at the edge by finding common neighbors of the two edge vertices of the edge
+    return  np.intersect1d(neib_list[edge[0]], neib_list[edge[1]])
+
+#===============================================================================================================================================
+
+
+#=================================================================================
+#flatten a list 
+#=================================================================================
+def flatten(lis):
+    """Given a list, possibly nested to any level, return it flattened."""
+    new_lis = []
+    for item in lis:
+        if type(item) == type([]):
+            new_lis.extend(flatten(item))
+        else:
+            new_lis.append(item)
+    return new_lis
+#=================================================================================     

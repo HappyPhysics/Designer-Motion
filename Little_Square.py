@@ -44,7 +44,7 @@ NUM_OF_ADDED_VERTS = 5;
 NUM_OF_DIMENSIONS = 2;
 
 #maximum number of trials before adding more vertices to the gray matter
-MAX_TRIALS = 20
+MAX_TRIALS = 30
 
 # the coupling constant for the energy gap in the cost function 
 EIG_VAL_REPULSION = 1
@@ -128,7 +128,9 @@ def find_desired_square(deformationType = DispType.random, edgeType = EdgeTypes.
         k0  = npr.rand(num_of_edges)
         
         var0 = np.hstack((vertices.flatten(), k0))
-    
+        #the square spring constants are fixed
+        var0[2*num_of_verts:2*num_of_verts + 4] = np.ones(4)
+        
         #minimize cost funcion
         res = op.minimize(cost_function, var0, method='BFGS',args=(U, edgeMat1, edgeMat2, num_of_edges, num_of_verts), options={'disp': False})
         
@@ -165,6 +167,9 @@ def find_desired_square(deformationType = DispType.random, edgeType = EdgeTypes.
     #the resulting values of the spring constant
     newK = (res.x[2*num_of_verts:]**2)
     newK = newK/np.max(newK)
+    #the square spring constants are fixed
+    newK[:4] = np.ones(4)
+    
     
     return [newVertices, edge_array, newK] 
     
@@ -182,6 +187,8 @@ def cost_function(var, disp_field, eMat1, eMat2, num_of_edges,num_of_vertices):
     #the square positions are fixed
     var[:LITTLE_SQUARE.size] = LITTLE_SQUARE.flatten()
     
+    #the square spring constants are fixed
+    var[2*num_of_vertices:2*num_of_vertices + 4] = np.ones(4)
     
    # var[:2*num_of_vertices] are the points of the lattice
    # var[2*num_of_vertices:] are the spring constants
@@ -244,7 +251,7 @@ def initialize_square(edgeType = EdgeTypes.all_connected, num_of_added_verts = N
     
     if(edgeType == EdgeTypes.all_connected):
     # make the edge array, connect all points for now
-        edge_array = connect_all_verts(get_num_of_verts(vertices))
+        edge_array = connect_all_of_square(get_num_of_verts(vertices)) #connects all points of the square and gray matter. edges in definite order
         
     elif(edgeType == EdgeTypes.all_to_square):
         #connect each gray matter vertex to the square vertices
@@ -364,7 +371,7 @@ def test_results(new_var, disp_field, eMat1, eMat2, num_of_edges, num_of_vertice
     
     gap = (lowestEigenVals(DynMat, 2)[1] - lowestEigenVals(DynMat, 2)[0])/lowestEigenVals(DynMat, 2)[0]
     
-    if((dotProduct < 0.995) or gap < 5):
+    if((dotProduct < 0.995) or gap < 4):
         print("dot produce: ", dotProduct, "\n")
         print("square disps in lowest energy: ", normalizeVec(lowestEigVector[:LITTLE_SQUARE.size - 3]), "\n")
         print("square disps in desired motion: ", normalizeVec(res0.x[:LITTLE_SQUARE.size - 3]), "\n")

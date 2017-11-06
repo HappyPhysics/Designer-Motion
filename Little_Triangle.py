@@ -40,11 +40,11 @@ importlib.reload(LatticeMaking)
 from LatticeMaking import *  #custom
 from enum import Enum
 
-NUM_OF_ADDED_VERTS = 5;
+NUM_OF_ADDED_VERTS = 2;
 NUM_OF_DIMENSIONS = 2;
 
 #maximum number of trials before adding more vertices to the gray matter
-MAX_TRIALS = 20
+MAX_TRIALS = 2
 
 # the coupling constant for the energy gap in the cost function 
 EIG_VAL_REPULSION = 1
@@ -57,7 +57,11 @@ SPRING_K_TO_CENTER = 0.1
 
 
 # this is the part we want to control the motion of, these vertices will be fixed.
-LITTLE_SQUARE = np.array([[0.0, 0.0], [-0.5, np.cos(np.pi/6)], [0.5, np.cos(np.pi/6)]])  - [0, np.cos(np.pi/6)/2]
+LITTLE_TRI = np.array([[0.0, 0.0], [-0.5, np.cos(np.pi/6)], [0.5, np.cos(np.pi/6)]])  - [0, np.cos(np.pi/6)/2]
+LITTLE_TRI = np.array([[ 0.70710678, -0.70710678],
+       [ 1.76776695, -1.06066017],
+       [ 1.6730326 , -0.44828774]])
+
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #This enum represents the different types of deformations that you can have 
@@ -82,8 +86,8 @@ class EdgeTypes(Enum):
 #================================================================================================================================================
 # Runs the minimization procedure to return the results for the spring constants and the positions
 #================================================================================================================================================
-def find_desired_square(deformationType = DispType.random, edgeType = EdgeTypes.all_connected, 
-                        num_of_added_verts = NUM_OF_ADDED_VERTS, squareDisp = None, square_ID = None):
+def find_desired_face(deformationType = DispType.random, edgeType = EdgeTypes.all_connected, 
+                        num_of_added_verts = NUM_OF_ADDED_VERTS, face_verts = None, face_Disps = None, face_ID = None):
     """
     minimizes over the spring constants and positions of the added returns the result of minimization after testing.
     
@@ -96,9 +100,17 @@ def find_desired_square(deformationType = DispType.random, edgeType = EdgeTypes.
         EdgeTypes.all_connected: everything is connected to everything.
         EdgeTypes.all_to_square: every added points is connected to all the vertices of the square.
         EdgeTypes.square_lattice: an additional square lattice in the interior. corresponding corners connected. 
+
         
         
     """
+    
+    print("\n\n")
+    
+    if face_verts is None:
+        face_verts = LITTLE_TRI
+        
+        
     #initialize test results so that the while loop goes at least once
     test_result = True
     
@@ -106,7 +118,8 @@ def find_desired_square(deformationType = DispType.random, edgeType = EdgeTypes.
     trial_num = 0
     
     #initialize the lattice
-    vertices, edge_array = initialize_square(edgeType, num_of_added_verts)
+    vertices, edge_array = initialize_face(face_verts, edgeType, num_of_added_verts)
+    
     
     num_of_verts = vertices.size//2
     num_of_edges = edge_array.size//2
@@ -114,8 +127,10 @@ def find_desired_square(deformationType = DispType.random, edgeType = EdgeTypes.
     #generate displacement field for the square. outside loop because we don't want to keep changing this
     U = make_desired_disp(vertices, num_of_vertices=num_of_verts, DeformType=deformationType)
     
-    if(squareDisp is not None):
-        U[:LITTLE_SQUARE.size - 3] = squareDisp
+    if(face_Disps is None):
+        face_Disps = U[:face_verts.size - 3]
+        #print(face_Disps)
+        #face_Disps = np.array([ 0.27116876,  0.12470211,  0.22605524])
         
     
     while (test_result):
@@ -130,20 +145,25 @@ def find_desired_square(deformationType = DispType.random, edgeType = EdgeTypes.
         k0  = npr.rand(num_of_edges)
         
         var0 = np.hstack((vertices.flatten(), k0))
-    
+        
+        minimizer_kwargs = {"method":'BFGS', "args":(U, edgeMat1, edgeMat2, num_of_edges, num_of_verts, face_verts), "options":{'disp': False} }
+        
+        res = op.basinhopping(cost_function, var0, minimizer_kwargs=minimizer_kwargs)
+        
         #minimize cost funcion
-        res = op.minimize(cost_function, var0, method='BFGS',args=(U, edgeMat1, edgeMat2, num_of_edges, num_of_verts), options={'disp': False})
+        #res = op.minimize(cost_function, var0, method='BFGS',
+        #                  args=(U, edgeMat1, edgeMat2, num_of_edges, num_of_verts, face_verts), options={'disp': False})
         
         #this works if we are working with the script of Many little squares
-        if(square_ID is not None):
-            print("Working on square number ", square_ID)
+        if(face_ID is not None):
+            print("Working on face number ", face_ID)
         trial_num += 1; print("Trial Number: ", trial_num, "\n")
         
         #if this returns true then keep trying, checks if U is close to the minimum on the LITTLE_SQUARE 
-        test_result = test_results(res.x, U, edgeMat1, edgeMat2, num_of_edges, num_of_verts)
+        test_result = test_results(res.x, U, edgeMat1, edgeMat2, num_of_edges, num_of_verts, face_verts)
         
-        #initialize the lattice again, adds a new vertex for every 10 trials
-        vertices, edge_array = initialize_square(edgeType, num_of_added_verts + trial_num//MAX_TRIALS)
+        #initialize the lattice again, adds a new vertex for every MAX_TRIALS trials
+        vertices, edge_array = initialize_face(face_verts, edgeType, num_of_added_verts + trial_num//MAX_TRIALS)
         
         if (np.mod(trial_num, MAX_TRIALS) == 0):
             
@@ -159,7 +179,7 @@ def find_desired_square(deformationType = DispType.random, edgeType = EdgeTypes.
     newVertices = res.x[:2*num_of_verts]
     
     #the square ones are fixed
-    newVertices[:LITTLE_SQUARE.size]  = LITTLE_SQUARE.flatten()
+    newVertices[:face_verts.size]  = face_verts.flatten()
     
     newVertices = newVertices.reshape((num_of_verts, 2))
             
@@ -173,16 +193,18 @@ def find_desired_square(deformationType = DispType.random, edgeType = EdgeTypes.
 #================================================================================================================================================
 # The cost function penalizes energy of the desired displacement of the square vertices
 #================================================================================================================================================
-def cost_function(var, disp_field, eMat1, eMat2, num_of_edges,num_of_vertices):
+def cost_function(var, disp_field, eMat1, eMat2, num_of_edges,num_of_vertices, face_verts):
     """
     var is the combined variables to be minimized over. It represents all the vertices and spring constants
     var[:2*num_of_vertices] are the points 
     var[2*num_of_vertices:] are the spring constants
     """
     
-    #the square positions are fixed
-    var[:LITTLE_SQUARE.size] = LITTLE_SQUARE.flatten()
-    
+    #the original face positions are fixed
+    var[:face_verts.size] = face_verts.flatten()
+   
+    #the original face spring constants are fixed
+    var[2*num_of_vertices:2*num_of_vertices + 3] = np.ones(3)
     
    # var[:2*num_of_vertices] are the points of the lattice
    # var[2*num_of_vertices:] are the spring constants
@@ -195,7 +217,7 @@ def cost_function(var, disp_field, eMat1, eMat2, num_of_edges,num_of_vertices):
     
     
     # minimize the energy subject to the constraint that the square displacements are fixed
-    res0 = op.minimize(energy, disp_field, method='Newton-CG', args=(DynMat, disp_field[:LITTLE_SQUARE.size - 3]), jac=energy_Der, 
+    res0 = op.minimize(energy, disp_field, method='Newton-CG', args=(DynMat, disp_field[:face_verts.size - 3]), jac=energy_Der, 
                        hess=energy_Hess, options={'xtol': 1e-8, 'disp': False})
     
     #get the lowest eigen vector
@@ -216,7 +238,7 @@ def cost_function(var, disp_field, eMat1, eMat2, num_of_edges,num_of_vertices):
 #================================================================================================================================================
 # Initializing the lattice
 #================================================================================================================================================
-def initialize_square(edgeType = EdgeTypes.all_connected, num_of_added_verts = NUM_OF_ADDED_VERTS):
+def initialize_face(original_face, edgeType = EdgeTypes.all_connected, num_of_added_verts = NUM_OF_ADDED_VERTS):
     """
     This method returns an array of position vectors (vertices) and an array of edge vectors (edge_array).
     
@@ -247,11 +269,11 @@ def initialize_square(edgeType = EdgeTypes.all_connected, num_of_added_verts = N
     gray_matter = 0.3*npr.rand(num_of_added_verts, NUM_OF_DIMENSIONS) + 0.2 #*2.0 - 0.5 
 
     # add them together to get the entire list of vertices
-    vertices = np.vstack((LITTLE_SQUARE, gray_matter))
+    vertices = np.vstack((original_face, gray_matter))
     
     if(edgeType == EdgeTypes.all_connected):
     # make the edge array, connect all points for now
-        edge_array = connect_all_verts(get_num_of_verts(vertices))
+        edge_array = connect_all_of_tri(get_num_of_verts(vertices))
         
     elif(edgeType == EdgeTypes.all_to_square):
         #connect each gray matter vertex to the square vertices
@@ -291,7 +313,7 @@ def energy(u, DynMat, squareDisp):
     
     energy(u, DynMat, BInds = boundaryIndices): calculates the energy after setting the boundary indices to the correct values. 
     """
-    u[:LITTLE_SQUARE.size - 3] = squareDisp #this assumes that the square vertex indices are 0,1,2,3
+    u[:squareDisp.size] = squareDisp #this assumes that the square vertex indices are 0,1,2,3
     u = normalizeVec(u)
     return 0.5*np.dot(np.dot(u.transpose(), DynMat), u)
 #================================================================================================================================================
@@ -304,7 +326,7 @@ def energy_Der(u, DynMat, squareDisp):
     Be careful about using this in different scripts, because this assumes boundary conditions when computing the energy.
     TO DO: A more general energy function that takes in the boundary conditions directly
     """
-    u[:LITTLE_SQUARE.size - 3] = squareDisp
+    u[:squareDisp.size] = squareDisp #this assumes that the square vertex indices are 0,1,2,3
     u = normalizeVec(u)
     return np.dot(DynMat, u)
 #================================================================================================================================================
@@ -334,7 +356,7 @@ def lowestEigenVal(DynMat):
 #================================================================================================================================================
 # Test the results of the minimization procedure
 #================================================================================================================================================
-def test_results(new_var, disp_field, eMat1, eMat2, num_of_edges, num_of_vertices):
+def test_results(new_var, disp_field, eMat1, eMat2, num_of_edges, num_of_vertices, face_verts):
     """
     this returns True if the dot product between the desired diplacement and the lowest eigen vector after minimization satisfies dotproduct < 0.95.
     this will result in trying the minimization procedure again.
@@ -345,7 +367,7 @@ def test_results(new_var, disp_field, eMat1, eMat2, num_of_edges, num_of_vertice
     """
     
     #the square positions are fixed
-    new_var[:LITTLE_SQUARE.size] = LITTLE_SQUARE.flatten()
+    new_var[:face_verts.size] = face_verts.flatten()
     
    # var[:num_of_vertices] are the points of the lattice
    # var[num_of_vertices:] are the spring constants
@@ -358,36 +380,36 @@ def test_results(new_var, disp_field, eMat1, eMat2, num_of_edges, num_of_vertice
     
     
     # minimize the energy subject to the constraint that the square displacements are fixed
-    res0 = op.minimize(energy, disp_field, method='Newton-CG', args=(DynMat, disp_field[:LITTLE_SQUARE.size - 3]), jac=energy_Der, 
+    res0 = op.minimize(energy, disp_field, method='Newton-CG', args=(DynMat, disp_field[:face_verts.size - 3]), jac=energy_Der, 
                        hess=energy_Hess, options={'xtol': 1e-8, 'disp': False})
     
-    lowestEigVector = normalizeVec(la.eigh(DynMat)[1][:LITTLE_SQUARE.size - 3,0])
-    secondEigVector = normalizeVec(la.eigh(DynMat)[1][:LITTLE_SQUARE.size - 3,1])
+    lowestEigVector = normalizeVec(la.eigh(DynMat)[1][:face_verts.size - 3,0])
+    secondEigVector = normalizeVec(la.eigh(DynMat)[1][:face_verts.size - 3,1])
     
     #return false if the vectors are not close enough
-    dotProduct = np.dot(lowestEigVector, normalizeVec(res0.x[:LITTLE_SQUARE.size - 3]))
+    dotProduct = np.dot(lowestEigVector, normalizeVec(res0.x[:face_verts.size - 3]))
     lowestEigVector *= np.sign(dotProduct)
     dotProduct *= np.sign(dotProduct)
     
-    gap = (lowestEigenVals(DynMat, 2)[1] - lowestEigenVals(DynMat, 2)[0])/lowestEigenVals(DynMat, 2)[0]
+    gap = np.abs((lowestEigenVals(DynMat, 2)[1] - lowestEigenVals(DynMat, 2)[0])/lowestEigenVals(DynMat, 2)[0])
     
-    if((dotProduct < 0.9995) or gap < 5):
+    if((dotProduct < 0.9995) or gap < 8):
         print("dot produce: ", dotProduct, "\n")
-        print("square disps in lowest energy: ", normalizeVec(lowestEigVector[:LITTLE_SQUARE.size - 3]), "\n")
-        print("square disps in desired motion: ", normalizeVec(res0.x[:LITTLE_SQUARE.size - 3]), "\n")
+        print("square disps in lowest energy: ", normalizeVec(lowestEigVector[:face_verts.size - 3]), "\n")
+        print("square disps in desired motion: ", normalizeVec(res0.x[:face_verts.size - 3]), "\n")
         print("eigenvalues: ", lowestEigenVals(DynMat, 5), "\n")
         print("gap: ", gap, "\n")
         print("trying again ... \n\n")
         return True;
     
     print("Number of edges: ", rigidityMatrix.shape[0], "\n")
-    print("energy: ", energy(normalizeVec(res0.x), DynMat, disp_field[:LITTLE_SQUARE.size - 3]), "\n")
+    print("energy: ", energy(normalizeVec(res0.x), DynMat, disp_field[:face_verts.size - 3]), "\n")
     print("eigenvalues: ", lowestEigenVals(DynMat, 5), "\n")
     print("dot produce: ", dotProduct, "\n")
     print("gap: ", gap, "\n")
     print("square disps in lowest energy: ", lowestEigVector, "\n")
-    print("square disps in desired motion: ", normalizeVec(res0.x[:LITTLE_SQUARE.size - 3]), "\n")
-    print("square disps in next to lowest: ", normalizeVec(secondEigVector[:LITTLE_SQUARE.size - 3]), "\n")
+    print("square disps in desired motion: ", normalizeVec(res0.x[:face_verts.size - 3]), "\n")
+    print("square disps in next to lowest: ", normalizeVec(secondEigVector[:face_verts.size - 3]), "\n")
     
     
     #plotPoints(new_var[:2*num_of_vertices], num_of_vertices)
@@ -412,7 +434,7 @@ def plotPoints(flattenedPoints, num_of_verts = -1):
     
     #chose the area of the square vertices to be bigger
     area = 200*np.ones(num_of_verts)
-    area[LITTLE_SQUARE.size//2:] *= 0.4 
+    area[LITTLE_TRI.size//2:] *= 0.4 
     #also a different color for the square vertices
     color = np.copy(area)
     

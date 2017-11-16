@@ -30,11 +30,11 @@ Methods:
 
 import numpy as np
 import numpy.random as npr
-import importlib
 import LatticeMaking
 from numpy import linalg as la
 from matplotlib import pyplot as plt
 import scipy.optimize as op
+import importlib
 importlib.reload(LatticeMaking)
 
 from LatticeMaking import *  #custom

@@ -58,7 +58,7 @@ TRI_LATTICE = triangular_lattice(LATTICE_WIDTH) #contains vertices and edges as 
 #===========================================================================================================================================
 # Finds the lattice that has the desired motion as lowest energy mode
 #=========================================================================================================================================== 
-def find_desired_lattice(disp_type=DispType.random, edgeType = EdgeTypes.all_connected, num_of_added_verts = 3, mesh = TRI_LATTICE):
+def find_desired_lattice(disp_type=DispType.random, edgeType = EdgeTypes.all_connected, num_of_added_verts = 3, mesh = list(TRI_LATTICE)):
     print("\n")
     num_of_verts = mesh[0].size//2
     
@@ -71,7 +71,8 @@ def find_desired_lattice(disp_type=DispType.random, edgeType = EdgeTypes.all_con
     
     
     results = []
-  
+    total_added = 0
+    
     # run over all the triangeles or faces of the mesh. 
     for tri_ID, triangle in enumerate(triangles):
             
@@ -91,7 +92,16 @@ def find_desired_lattice(disp_type=DispType.random, edgeType = EdgeTypes.all_con
         res = find_desired_face(num_of_added_verts=num_of_added_verts, face_Disps=canon_disps,
                            face_verts=triangle_verts, face_ID=tri_ID + 1)
         
+        
+        
+        res[0] = np.dot(res[0], rotation_matrix(-PI/4))
+        
+        #print("num_of_verts: ", num_of_verts)
+        
+        add_res_to_mesh(mesh, res, triangle, np.arange(num_of_verts + total_added, num_of_verts + total_added + res[0].size//2))
          
+        total_added += res[0].size//2
+        
         results.append(res)
         
         
@@ -101,7 +111,7 @@ def find_desired_lattice(disp_type=DispType.random, edgeType = EdgeTypes.all_con
         #add in the correct spring constants
         print("\n")
         
-    return results
+    return results, mesh
 #===========================================================================================================================================         
         
  
@@ -236,45 +246,29 @@ def angle_between (vec1, vec2):
     return np.arccos(np.dot(vec2, [1, 0])/(norm2))*np.sign(vec2[1]) - np.arccos(np.dot(vec1, [1, 0])/(norm1))*np.sign(vec1[1])
 #===========================================================================================================================================
     
+
+#===========================================================================================================================================
+# adds the new results to the original mesh
+#===========================================================================================================================================       
+def add_res_to_mesh(mesh, res, triangle, new_verts):
+    #print("triangle: ", triangle)
+    #print("new_verts: ", new_verts)
+   
+    mesh[0] = np.vstack((mesh[0], res[0])) 
     
-def recombine_lattice(results):
-    #start with the original lattice
-    new_lattice = TRI_LATTICE
+    a = res[1]
+    #print("edges: ", a)
+    palette = np.arange(0, 3 + new_verts.size)
+    #print("palette: ", palette)
+    key = np.hstack((triangle, new_verts))
+    #print("key: ", key)
+    #print("a.ravel:", a.ravel())
+    index = np.digitize(a.ravel(), palette, right=True)
+    #print("index: ", index)
+    #print(key[index].reshape(a.shape))
+    mesh[1] = np.vstack((mesh[1], key[index].reshape(a.shape)))
     
-    #number of vertices in the triangle lattice
-    num_of_triangle_verts = TRI_LATTICE[0].size//2
-    
-    #keep track of the number of added gray matter verts so far
-    current_added_verts = 0
-    
-    #for each triangle of the lattice, pick out the triangles one by one. 
-    for vert_indx in range(num_of_verts):
-      
-        #check if the vert is a lower left corner of a triangle, these indicate the different triangles
-        if(get_triangle_indices(vert_indx, num_of_triangle_verts, output=OutType.indices) is None):
-            continue
-        
-        triangle_indices = get_triangle_indices(vert_indx, num_of_triangle_verts, output=OutType.indices)
-        
-        #the number of extra vertices in the current triangle
-        num_extra_verts = results[vert_indx - vert_indx//LATTICE_WIDTH][0].shape[0] - LITTLE_triangle.shape[0]
-        print("num of extra verts in triangle ", vert_indx - vert_indx//LATTICE_WIDTH, " is: ", num_extra_verts)
-        
-        gray_indices = np.arange(num_extra_verts) + num_of_triangle_verts + current_added_verts
-        
-        
-        
-        current_added_verts += num_extra_verts
-        
-        #add the corresponding grey matter to the end of the vertex array.
-    #get the vertices of the triangle and added gray matter and connect everything 
-    #exclude the triangle bonds because they are already there
-    
-    pass
-    
-    
-    
-    
+#===========================================================================================================================================    
     
     
     

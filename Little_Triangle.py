@@ -120,7 +120,6 @@ def find_desired_face(deformationType = DispType.random, edgeType = EdgeTypes.al
     #initialize the lattice
     vertices, edge_array = initialize_face(face_verts, edgeType, num_of_added_verts)
     
-    
     num_of_verts = vertices.size//2
     num_of_edges = edge_array.size//2
     
@@ -135,6 +134,10 @@ def find_desired_face(deformationType = DispType.random, edgeType = EdgeTypes.al
     
     while (test_result):
     
+        #this works if we are working with the script of Many little squares
+        if(face_ID is not None):
+            print("Working on face number ", face_ID)
+        trial_num += 1; print("Trial Number: ", trial_num, "\n")
     
         # connectivity dependent matrices that are used to calculate the rigidity matrix
         edgeMat1 = makeEdgeMatrix1(edge_array, numOfEdges=num_of_edges, numOfVerts=num_of_verts)
@@ -146,18 +149,14 @@ def find_desired_face(deformationType = DispType.random, edgeType = EdgeTypes.al
         
         var0 = np.hstack((vertices.flatten(), k0))
         
-        minimizer_kwargs = {"method":'BFGS', "args":(U, edgeMat1, edgeMat2, num_of_edges, num_of_verts, face_verts), "options":{'disp': False} }
+        #return [vertices[3:], edge_array[3:], k0[3:]]  
         
-        res = op.basinhopping(cost_function, var0, minimizer_kwargs=minimizer_kwargs)
+        minimizer_kwargs = {"method":'BFGS', "args":(
+                U, edgeMat1, edgeMat2, num_of_edges, num_of_verts, face_verts,vertices.flatten()),
+                "options":{'disp': False} }
         
-        #minimize cost funcion
-        #res = op.minimize(cost_function, var0, method='BFGS',
-        #                  args=(U, edgeMat1, edgeMat2, num_of_edges, num_of_verts, face_verts), options={'disp': False})
+        res = op.basinhopping(cost_function, var0, minimizer_kwargs=minimizer_kwargs, niter=100)
         
-        #this works if we are working with the script of Many little squares
-        if(face_ID is not None):
-            print("Working on face number ", face_ID)
-        trial_num += 1; print("Trial Number: ", trial_num, "\n")
         
         #if this returns true then keep trying, checks if U is close to the minimum on the LITTLE_SQUARE 
         test_result = test_results(res.x, U, edgeMat1, edgeMat2, num_of_edges, num_of_verts, face_verts)
@@ -178,22 +177,28 @@ def find_desired_face(deformationType = DispType.random, edgeType = EdgeTypes.al
     #get the new vertices from the results
     newVertices = res.x[:2*num_of_verts]
     
-    #the square ones are fixed
+    #the original face ones are fixed
     newVertices[:face_verts.size]  = face_verts.flatten()
     
     newVertices = newVertices.reshape((num_of_verts, 2))
             
     #the resulting values of the spring constant
     newK = (res.x[2*num_of_verts:]**2)
+    
+    #the original face spring constants are fixed
+    newK[:3] = np.ones(3)
+    
     newK = newK/np.max(newK)
     
-    return [newVertices, edge_array, newK] 
+    return [vertices[3:], edge_array[3:], newK[3:]] 
+    
+    return [newVertices[3:], edge_array[3:], newK[3:]] 
     
 
 #================================================================================================================================================
-# The cost function penalizes energy of the desired displacement of the square vertices
+# The cost function penalizes energy of the desired displacement of the Face vertices
 #================================================================================================================================================
-def cost_function(var, disp_field, eMat1, eMat2, num_of_edges,num_of_vertices, face_verts):
+def cost_function(var, disp_field, eMat1, eMat2, num_of_edges,num_of_vertices, face_verts, flattened_vertices):
     """
     var is the combined variables to be minimized over. It represents all the vertices and spring constants
     var[:2*num_of_vertices] are the points 
@@ -201,7 +206,8 @@ def cost_function(var, disp_field, eMat1, eMat2, num_of_edges,num_of_vertices, f
     """
     
     #the original face positions are fixed
-    var[:face_verts.size] = face_verts.flatten()
+    #var[:face_verts.size] = face_verts.flatten()
+    var[:2*num_of_vertices] = flattened_vertices
    
     #the original face spring constants are fixed
     var[2*num_of_vertices:2*num_of_vertices + 3] = np.ones(3)
@@ -216,7 +222,7 @@ def cost_function(var, disp_field, eMat1, eMat2, num_of_edges,num_of_vertices, f
                               springK=var[2*num_of_vertices:], numOfVerts=num_of_vertices, numOfEdges=num_of_edges)
     
     
-    # minimize the energy subject to the constraint that the square displacements are fixed
+    # minimize the energy subject to the constraint that the face displacements are fixed
     res0 = op.minimize(energy, disp_field, method='Newton-CG', args=(DynMat, disp_field[:face_verts.size - 3]), jac=energy_Der, 
                        hess=energy_Hess, options={'xtol': 1e-8, 'disp': False})
     
@@ -228,7 +234,7 @@ def cost_function(var, disp_field, eMat1, eMat2, num_of_edges,num_of_vertices, f
    # Wall_Cost = WAll_BARRIER*(np.heaviside(-var[LITTLE_SQUARE.size:2*num_of_vertices], 1) + 
    #                          np.heaviside(var[LITTLE_SQUARE.size:2*num_of_vertices] - 1, 1))
     
-    #attract_to_center = SPRING_K_TO_CENTER * np.sum(var[LITTLE_SQUARE.size:2*num_of_vertices]**2)
+   #attract_to_center = SPRING_K_TO_CENTER * np.sum(var[face_verts.size:2*num_of_vertices]**2)
     
     
     # minimize this energy with respect to the lowest energy eigenvalue
@@ -242,12 +248,12 @@ def initialize_face(original_face, edgeType = EdgeTypes.all_connected, num_of_ad
     """
     This method returns an array of position vectors (vertices) and an array of edge vectors (edge_array).
     
-    The vertices include a square with of unit width and (num_of_added_points) extra points that are inserted at random positions in a square 
-    of width = 2. The square vertices must be the first 0,1,2,3.
+    The vertices include a face with of unit width and (num_of_added_points) extra points that are inserted at random positions in a face 
+    of width = 2. The face vertices must be the first 0,1,2,3.
     
     Every point is connected to every other point so it generates the maximum number of edges. 
     
-    Example: initialize_square(2)
+    Example: initialize_face(2)
     Out[45]: 
 (array([[ 0.        ,  0.        ],
         [ 0.        ,  1.        ],
@@ -265,7 +271,7 @@ def initialize_face(original_face, edgeType = EdgeTypes.all_connected, num_of_ad
         [3, 4]]))
     """
 
-    # this part I call grey matter, these are the added to the square vertices 
+    # this part I call grey matter, these are the added to the face vertices 
     gray_matter = 0.3*npr.rand(num_of_added_verts, NUM_OF_DIMENSIONS) + 0.2 #*2.0 - 0.5 
 
     # add them together to get the entire list of vertices
@@ -393,10 +399,10 @@ def test_results(new_var, disp_field, eMat1, eMat2, num_of_edges, num_of_vertice
     
     gap = np.abs((lowestEigenVals(DynMat, 2)[1] - lowestEigenVals(DynMat, 2)[0])/lowestEigenVals(DynMat, 2)[0])
     
-    if((dotProduct < 0.9995) or gap < 8):
+    if((dotProduct < 0.9995) or gap < 3):
         print("dot produce: ", dotProduct, "\n")
-        print("square disps in lowest energy: ", normalizeVec(lowestEigVector[:face_verts.size - 3]), "\n")
-        print("square disps in desired motion: ", normalizeVec(res0.x[:face_verts.size - 3]), "\n")
+        print("face disps in lowest energy: ", normalizeVec(lowestEigVector[:face_verts.size - 3]), "\n")
+        print("face disps in desired motion: ", normalizeVec(res0.x[:face_verts.size - 3]), "\n")
         print("eigenvalues: ", lowestEigenVals(DynMat, 5), "\n")
         print("gap: ", gap, "\n")
         print("trying again ... \n\n")
@@ -407,12 +413,12 @@ def test_results(new_var, disp_field, eMat1, eMat2, num_of_edges, num_of_vertice
     print("eigenvalues: ", lowestEigenVals(DynMat, 5), "\n")
     print("dot produce: ", dotProduct, "\n")
     print("gap: ", gap, "\n")
-    print("square disps in lowest energy: ", lowestEigVector, "\n")
-    print("square disps in desired motion: ", normalizeVec(res0.x[:face_verts.size - 3]), "\n")
-    print("square disps in next to lowest: ", normalizeVec(secondEigVector[:face_verts.size - 3]), "\n")
+    print("face disps in lowest energy: ", lowestEigVector, "\n")
+    print("face disps in desired motion: ", normalizeVec(res0.x[:face_verts.size - 3]), "\n")
+    print("face disps in next to lowest: ", normalizeVec(secondEigVector[:face_verts.size - 3]), "\n")
     
     
-    #plotPoints(new_var[:2*num_of_vertices], num_of_vertices)
+    plotPoints(new_var[:2*num_of_vertices], num_of_vertices)
 
     return False
 #================================================================================================================================================ 
@@ -438,8 +444,8 @@ def plotPoints(flattenedPoints, num_of_verts = -1):
     #also a different color for the square vertices
     color = np.copy(area)
     
-    
     plt.scatter(Points[:,0], Points[:,1], s=area, c=color)
+    plt.show()
 #================================================================================================================================================
 
 

@@ -235,7 +235,7 @@ def connect_all_of_tri(num_of_verts):
     attached to it np.array([index1, index2]). The edges are ordered in such a way that the triangle vertices are given first
     """
    
-    #connect the square vertices
+    #connect the tri vertices
     edge_array = [[0, 1], [1, 2], [0, 2]];
     
     
@@ -262,8 +262,7 @@ def connect_all_to_gray(original_verts, added_verts):
         all_verts = np.hstack((original_verts, added_verts))
             
         for neib_index in all_verts:
-            #print(vert_index)
-            #print(neib_index)
+            
             if(vert_index != neib_index):
                edge_array.append([vert_index, neib_index])
             
@@ -534,7 +533,7 @@ def makeRigidityMat(verts, edgeArray=np.array([0]), numOfVerts=-1, numOfEdges=-1
 #===========================================================================================================================================
 # returns the Rigidity Matrix as an array
 #===========================================================================================================================================  
-def makeDynamicalMat(edgeArray = np.zeros(1), verts = np.zeros(1), RigidityMat= np.zeros(1), springK= np.zeros(1),  
+def makeDynamicalMat(edgeArray=np.zeros(1), verts=np.zeros(1), RigidityMat= np.zeros(1), springK= np.zeros(1),  
                      numOfVerts=-1, numOfEdges=-1, negativeK=False):
     """
     makeDynamicalMat(verts, edgeArray, numOfVerts=-1, numOfEdges=-1):
@@ -561,7 +560,7 @@ def makeDynamicalMat(edgeArray = np.zeros(1), verts = np.zeros(1), RigidityMat= 
             
             
     if(not RigidityMat.any()):
-        print("This is not supposed to be true during minimization because we would be using a rigidity matrix")
+        #print("This is not supposed to be true during minimization because we would be using a rigidity matrix")
         if not verts.any():
             raise NameError("Please either provide the rigidity matrix or the vertices for calculating the dynamical matrix")
         if numOfVerts < 1:

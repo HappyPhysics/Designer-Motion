@@ -228,7 +228,7 @@ def connect_all_of_square(num_of_verts):
 #===========================================================================================================================================
 # returns an edge array where every point is connected to any other
 #===========================================================================================================================================  
-def connect_all_of_tri(num_of_verts):
+def connect_all_of_tri(num_of_verts, include_tri_edges = False):
     """
     Returns an edge array with all the points connected to each other. It assumes a triangle + gray matter
     The edge array is a list neighbors, for each edge it gives the an array the indices of the points 
@@ -236,13 +236,18 @@ def connect_all_of_tri(num_of_verts):
     """
    
     #connect the tri vertices
-    edge_array = [[0, 1], [1, 2], [0, 2]];
-    
+    #edge_array = [[0, 1], [1, 2], [0, 2]];
+    #edge_array = []
     
     all_to_gray = connect_all_to_gray(np.arange(3), np.arange(3, num_of_verts))
     
-    #return all the edges together into a single edge array
-    return np.vstack((np.array(edge_array), all_to_gray))
+    if not include_tri_edges:
+        return all_to_gray
+    else: 
+        tri_edges = [[0, 1], [1, 2], [0, 2]];
+        
+        #return all the edges together into a single edge array
+        return np.vstack((np.array(tri_edges), all_to_gray))
 #===========================================================================================================================================
 
 #===========================================================================================================================================
@@ -567,7 +572,8 @@ def makeDynamicalMat(edgeArray=np.zeros(1), verts=np.zeros(1), RigidityMat= np.z
             numOfVerts = len(set(list(edgeArray.flatten())))
 
         RigidityMat = makeRigidityMat(verts, edgeArray, numOfVerts, numOfEdges) 
-    
+        #print(RigidityMat.shape)
+        
     if(not springK.any()):
         springK = np.ones(numOfEdges)
 
@@ -578,6 +584,17 @@ def makeDynamicalMat(edgeArray=np.zeros(1), verts=np.zeros(1), RigidityMat= np.z
     return dynMat
 #================================================================================================================================================
 
+
+def deformation_energy(u, dyn_mat = np.zeros(1), vertices = None, edges = None):
+    '''
+    '''
+    
+    if(u.shape[0] != u.size):
+        v  = u.flatten()
+    else: v = u
+    
+    if dyn_mat.any():
+        return np.dot(np.dot(v, dyn_mat), v)
 
 #================================================================================================================================================
 # Normalize a vector, assuming that norm(V) != 0 
@@ -743,3 +760,161 @@ def flatten(lis):
             new_lis.append(item)
     return new_lis
 #=================================================================================     
+    
+import warnings    
+#===========================================================================================================================================
+# angle from vec1 to vec2
+#===========================================================================================================================================   
+def angle_between (vec1, vec2):
+    """
+    Angle from vec1 to vec2. 
+    This gives the angle you have to rotate vec1 to make it parallel to vec2, could be negative.
+    """
+    
+    norm1 = la.norm(vec1)
+    norm2 = la.norm(vec2)
+    
+    if (norm1 == 0 or norm2 == 0):
+        warnings.warn("Warning, angle between zero vector assumed to be pi/2 ")  
+        return np.pi/2
+    
+    #find the angles with respect to the x axis then take the different. us x hat helps get the sign right
+    return np.arccos(np.dot(vec2, [1, 0])/(norm2))*np.sign(vec2[1]) - np.arccos(np.dot(vec1, [1, 0])/(norm1))*np.sign(vec1[1])
+#========================================================================================================================================
+
+#===========================================================================================================================================
+# returns a projection operator that projects on the complement of the rigid trasnformations of a given lattice
+#===========================================================================================================================================   
+def get_rigid_transformations (vertices):
+    """
+    returns a projection operator that projects on the complement of the rigid trasnformations of a given lattice
+    
+    The lowest energy deformations of any (free floating) mesh are uniform rotations and translations. When considering the possible 
+    deformations of a mesh or lattice it is convinient to project out the components along the rigid transformations. 
+    Assuming that the rigid transformations are the only one with zero energy cost, they will be perperdicular to all the other 
+    eigenvalues of the dynamical matrix. So we will project them out from the beginning.
+   
+    
+    Input: 
+    vertices: shape is (num_of_vertices, 2). Reference positions of the points on the lattice 
+
+    """
+    num_of_vertices = vertices.shape[0]
+    
+    # the translation of each vetex in the x direction (flattened)
+    x_translations = np.array([1, 0]*(num_of_vertices))
+    # the translation of each vetex in the x direction (flattened)
+    y_translations = np.array([0, 1]*(num_of_vertices))
+    
+    
+    average_position = np.sum(vertices, 0)/num_of_vertices
+    
+    translated_verts = vertices - average_position
+    
+    
+    # this is the same as  uR_i = hat(z) X (P_i - Paverage) for a CC rotation around z axis
+    rotation_matrix = np.array([[0, 1],[-1, 0]])
+    z_rotation = np.dot(translated_verts,rotation_matrix) #will be flattened on return
+    
+    return np.array([x_translations, y_translations, z_rotation.flatten()])
+#========================================================================================================================================
+
+#===========================================================================================================================================
+# generates a projection operator and it's complement from a set of vector bases
+#===========================================================================================================================================   
+def get_complement_space (vectors, only_complement = True):
+    """
+    returns a projection operator on the space that is complement to the span of the given vectors.
+    
+    vectors is an array of vectors. The dimensionality of the ambient space is determined by the lengths of the individual vectors. 
+    which are all equal. The number of indepently given vectors determines the dimensionality of the space that we project onto
+    (or way from). 
+    
+    for each one of the vectors we will use the method projection_operator(vector).
+    
+    Input: 
+    vectors: shape is (num_of_vectors, space_dimensionality). 
+    
+    Example: get_complement_space([[1,1,1]])[0]
+             Out[73]: 
+             array([[ 0.66666667, -0.33333333, -0.33333333],
+                       [-0.33333333,  0.66666667, -0.33333333],
+                       [-0.33333333, -0.33333333,  0.66666667]])
+    """
+    vectors = np.array(vectors)
+    
+    # for example this would be 2*N for the displacement field of N particles in 2D
+    space_dimensionality = vectors.shape[1]
+    
+   #onto means that the projection operator returns a vector in the space spanned by vectors
+    onto_Projection = np.zeros((space_dimensionality, space_dimensionality))
+    
+    for vector in vectors:
+        
+        #get component orthogonal to the previous ones.
+        orth_vector = vector - np.dot(onto_Projection, vector)
+        
+        onto_Projection +=  projection_operator(orth_vector)
+        
+    complement_Projector = np.eye(space_dimensionality) - onto_Projection 
+    
+    if only_complement: return complement_Projector
+    else: return complement_Projector, onto_Projection
+#========================================================================================================================================
+
+
+#===========================================================================================================================================
+# generates a projection operator onto the direction of the given vector
+#===========================================================================================================================================   
+def projection_operator(proj_vector):
+    """
+    Generates a projection operator onto the direction of the given vector.
+    
+    The projection operator when acting on any other vector will return the component of the vector
+    that is along the given by proj_vector
+    
+        
+    Input: 
+    proj_vector: shape is (space_dimensionality, ).  Project onto this
+    
+    """
+    proj_vector = np.array(proj_vector)
+    
+    vec_SqrMag = np.sum(proj_vector**2)
+    
+    # raise an error for zero norm instead of returning zero #TODO maybe return a warning instead and return zero?
+    if(vec_SqrMag == 0):
+        raise NameError("Zero norm vector given! can't project onto zero vector direction.")
+            
+    #finding the projection operator involves the outer product of the vector with itself. 
+    outer_prod = np.outer(proj_vector, proj_vector)
+    
+    return outer_prod/vec_SqrMag # = projection_operator
+#========================================================================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

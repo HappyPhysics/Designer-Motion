@@ -56,51 +56,78 @@ TRI_LATTICE = triangular_lattice(LATTICE_WIDTH) #contains vertices and edges as 
 
 
 #===========================================================================================================================================
+# A test lattice for changing a transverse wave to a longitudinal one
+#=========================================================================================================================================== 
+def wave_changer():
+    
+    verts = np.array([[0.0, 0.0], [0.0, 1.0], [np.sin(PI/3), 0.5], [np.sin(PI/3), -0.5]])
+    
+    edges = np.array([[0, 1], [0, 2], [0, 3], [1,2], [2,3]], dtype=np.int64)
+    
+    mesh = [verts, edges]
+    
+    disp = np.array([[0.0, 1.0], [0.0, -1.0], [-1.0, 0.0], [1.0, 0.0]])  
+    
+    test = True;
+    while(test):
+        res = find_desired_lattice(mesh=mesh, desired_disp=disp, edgeType=EdgeTypes.all_to_gray)
+        test = check_answer(res)
+    
+    return res
+
+#===========================================================================================================================================
 # Finds the lattice that has the desired motion as lowest energy mode
 #=========================================================================================================================================== 
-def find_desired_lattice(disp_type=DispType.random, edgeType = EdgeTypes.all_connected, num_of_added_verts = 3, mesh = list(TRI_LATTICE)):
+def find_desired_lattice(disp_type=DispType.random, edgeType = EdgeTypes.all_connected, 
+                         num_of_added_verts= 3, mesh = list(TRI_LATTICE), desired_disp = None):
     print("\n")
     num_of_verts = mesh[0].size//2
     
+    mesh1 = mesh.copy()
+    
     # define the desired displacement field of the entire lattice
-    desired_disp = make_desired_disp(mesh[0], DeformType=disp_type, num_of_vertices=num_of_verts)
-    desired_disp = np.hstack(([0,0,0], desired_disp)).reshape((num_of_verts, 2))
+    if desired_disp is None:
+        desired_disp = make_desired_disp(mesh1[0], DeformType=disp_type, num_of_vertices=num_of_verts)
+        desired_disp = np.hstack(([0,0,0], desired_disp)).reshape((num_of_verts, 2))
    
     # take in an edge list, generate a list or an array of triangles with elements (indx1, indx2, indx3)
-    triangles = get_mesh_faces(mesh[1])
-    
+    triangles = get_mesh_faces(mesh1[1])
+    print("The mesh contrains the triangles: ", triangles)
     
     results = []
+    if(edgeType == EdgeTypes.all_to_gray):
+        mesh1[1] = np.ones((0,2), dtype=np.int64)
+        springConstants = np.ones(0) # no springs started on the original mesh
+    else:
+        springConstants = np.ones(mesh1[1].size//2)
+        
+    
     total_added = 0
     
     # run over all the triangeles or faces of the mesh. 
     for tri_ID, triangle in enumerate(triangles):
             
-        #rotate by 45 degrees so that the first edge is not in the x axis 
-        triangle_verts = np.dot(np.array(mesh[0][triangle]), rotation_matrix(PI/4))
+        
+        triangle_verts = np.array(mesh1[0][triangle])
         
         #get the indices of the triangle as a mask and use it to return the desired displacements of the triangle
-        triangle_disps = desired_disp[triangle]
-        
+        triangle_disps = desired_disp[triangle].flatten()
         
         # change thier frame of reference to the canonical one (from little triangle).
-        canon_disps = np.array(lab_to_triangle_frame(triangle_disps))
+        #new_tri_verts, canon_disps = lab_to_triangle_frame(triangle_disps, triangle_verts)
        
         
-        
         # call little triangle to add the gray matter
-        res = find_desired_face(num_of_added_verts=num_of_added_verts, face_Disps=canon_disps,
-                           face_verts=triangle_verts, face_ID=tri_ID + 1)
+        res = find_desired_face(num_of_added_verts=num_of_added_verts, face_Disps=triangle_disps,
+                           face_verts=triangle_verts, face_ID=tri_ID + 1, edgeType=edgeType)
         
         
-        
-        res[0] = np.dot(res[0], rotation_matrix(-PI/4))
-        
-        #print("num_of_verts: ", num_of_verts)
-        
-        add_res_to_mesh(mesh, res, triangle, np.arange(num_of_verts + total_added, num_of_verts + total_added + res[0].size//2))
+        add_res_to_mesh(mesh1, res, triangle, np.arange(num_of_verts + total_added, num_of_verts + total_added + res[0].size//2))
          
         total_added += res[0].size//2
+        
+        #the spring constants they are not squared anymore, they will be squared when the energy is evaluated
+        springConstants = np.hstack((springConstants, res[2]))
         
         results.append(res)
         
@@ -111,7 +138,15 @@ def find_desired_lattice(disp_type=DispType.random, edgeType = EdgeTypes.all_con
         #add in the correct spring constants
         print("\n")
         
-    return results, mesh
+    #springConstants /= np.max(springConstants)
+
+    mask = springConstants**2 < 0.01
+    
+    #show vertices
+    plotPoints(mesh1[0], num_of_originals=num_of_verts)    
+     
+    #spring constants are normalized so that the maximum value is one
+    return results, mesh1, springConstants
 #===========================================================================================================================================         
         
  
@@ -155,7 +190,7 @@ def get_triangle_indices(indx, num_of_verts, output = OutType.mask):
 #===========================================================================================================================================
 # puts the triangle displacements in canonical form
 #===========================================================================================================================================     
-def lab_to_triangle_frame(triangle_disps, direction = 1):
+def lab_to_triangle_frame(triangle_disps, triangle_verts, direction = 1):
     """
         Translates between the lab and triangle frames. triangle frame is the natural frame introduced in the script Little_triangle.
         
@@ -166,17 +201,40 @@ def lab_to_triangle_frame(triangle_disps, direction = 1):
                 
             
     """
-
+# find the triangle vertices in canonical for, [0,0], [0, y],...
+    new_verts = np.copy(triangle_verts)
+    
+    new_verts -= new_verts[0]
+    
+    new_verts = np.dot(new_verts, rotation_matrix(angle_between([0, 1],new_verts[1])))     
+    
+    
+#for disps, find the amount needed to be rotated.
+    
     #subtract the displacement of the first vertex from all the displacements. 
     new_disps = triangle_disps - triangle_disps[0]
-
-    # find a rotation that will put the second displacement along the y axis.
-    rot_matrix = rotation_matrix(angle_between(new_disps[1], [0, 1]))
     
-    # apply this rotation to all the displacements. 
-    new_disps = np.dot(rot_matrix, new_disps.transpose())
+    
+    #rotation vectors, these are vectors normal to the position vector (starting from the pivot point)
+    rotation_vecs = np.dot((new_verts), rotation_matrix(-PI/2)) # C.C. rotation
+    print(rotation_vecs)
+    # find (negative of ) the component of the first displacement perpendicular to the first edge. 
+    # find the ratio of length of this component to the length of the first edge, this is the  rotation parameter. 
+    rotation_param = -np.dot(new_disps[1], rotation_vecs[1])/(la.norm(rotation_vecs[1])**2)
+    
+    
+#rotate the right amount    
+    #start with the triangle positions. (DONE ABOVE)
+    #subtract the first position from all of them. (DONE ABOVE)
+    # rotate the result by 90 degrees. (DONE ABOVE)
+    
+    # multiply by the rotation parameter. 
+    #add to displacements. 
+    new_disps += rotation_param*rotation_vecs
+    
+    
     # return the displacemetns in canonical form.     
-    return new_disps.transpose().flatten()[3:]
+    return new_verts, new_disps.flatten()[3:]
     
     
 #===========================================================================================================================================    
@@ -184,36 +242,19 @@ def lab_to_triangle_frame(triangle_disps, direction = 1):
 #===========================================================================================================================================
 # changes from the canonical form of the triangle back to the "lab" frame (acts on vertex positions)
 #===========================================================================================================================================     
-def triangle_to_lab_frame(c_vertices, triangle_disps):
+def back_to_lab_frame(output, triangle_verts):
     """
-        Translates the solution given by Little_triangle back to the original lab frame. Uses the original triangle displacements to do so.
-        
-        Input:
-            c_vertices:  vertices return as the solution to the minimization in Little_triangle. They shuold be reshaped before an output 
-            is produced. 
-            triangle_disps: The original desired triangle displacements
-       
-        Output: the vertices put in the lab frame and reshaped into a list of 2-vectors          
+       translates the gray matter back to lab frame         
             
     """
-    
-    # find a rotation that will put the second displacement along the y axis.
-    rot_matrix = rotation_matrix(angle_between([0, 1], new_disps[1]))
-    
-    
     #subtract the displacement of the first vertex from all the displacements. 
-    triangle_disps = np.hstack(([0,0,0], canon_disps)).reshape(())
+    output += triangle_verts[0]                       
 
-    # find a rotation that will put the second displacement along the y axis.
-    rot_matrix = rotation_matrix(angle_between(new_disps[1], [0, 1]))
-    
-    # apply this rotation to all the displacements. 
-    new_disps = np.dot(rot_matrix, new_disps.transpose())
-    # return the displacemetns in canonical form.     
-    return new_disps.transpose().flatten()[3:]
+    output = np.dot(output, rotation_matrix(-angle_between([0, 1], triangle_verts[1])))     
     
     
-#===========================================================================================================================================    
+    return output
+#===========================================================================================================================================   
 
 #===========================================================================================================================================
 # rotates a vector by angle degrees
@@ -225,7 +266,8 @@ def rotation_matrix(angle):
     
     return np.array([[np.cos(angle), -np.sin(angle)],[np.sin(angle), np.cos(angle)]])     
 #===========================================================================================================================================    
-    
+
+import warnings    
 #===========================================================================================================================================
 # angle from vec1 to vec2
 #===========================================================================================================================================   
@@ -239,7 +281,7 @@ def angle_between (vec1, vec2):
     norm2 = la.norm(vec2)
     
     if (norm1 == 0 or norm2 == 0):
-        print("Warning, angle between zero vector assumed to be pi/2 ") #TODO see if I can use Warning without stoping the execution 
+        warnings.warn("Warning, angle between zero vector assumed to be pi/2 ")  
         return np.pi/2
     
     #find the angles with respect to the x axis then take the different. us x hat helps get the sign right
@@ -251,8 +293,10 @@ def angle_between (vec1, vec2):
 # adds the new results to the original mesh
 #===========================================================================================================================================       
 def add_res_to_mesh(mesh, res, triangle, new_verts):
-    #print("triangle: ", triangle)
-    #print("new_verts: ", new_verts)
+    '''
+    adds the extra vertices from res to the mesh. And adds the edges too after replacing the values of the indices 
+    by the order in which they appear in the new mesh
+    '''
    
     mesh[0] = np.vstack((mesh[0], res[0])) 
     
@@ -269,10 +313,103 @@ def add_res_to_mesh(mesh, res, triangle, new_verts):
     mesh[1] = np.vstack((mesh[1], key[index].reshape(a.shape)))
     
 #===========================================================================================================================================    
+
+
+#===========================================================================================================================================
+# check the final answer
+#===========================================================================================================================================     
+def check_answer(result):
+    '''
+    checks whether the results returned match the desired dispalcement. The desired displacements are given explicitly for now. 
+    
+    '''
+
+    face_verts = np.array([[0.0, 0.0], [0.0, 1.0], [np.sin(PI/3), 0.5], [np.sin(PI/3), -0.5]])
+    desired_disp = np.array([ 0.        ,  1.        ,  0.        , -1.        , -1.        ,
+        0.        ,  1.        ,  0.        ,  0.83382341,  0.56617335,
+        0.53577003,  0.39596225,  0.55284973,  0.15255589,  0.85216995,
+        0.05556033,  0.10565699,  0.17175687,  0.42789355,  0.83339344])
+
     
     
     
+    mesh = result[1].copy()
+    k = result[2].copy()
+    #print("spring constants:" , k**2/max(k**2))
+    mask = k**2/max(k**2) < 0.01
+    
+    
+    dyn_mat = makeDynamicalMat(verts=mesh[0], edgeArray=mesh[1], springK=k)
+    
+    lowestEigVector = normalizeVec(la.eigh(dyn_mat)[1][:,3])
+    
+    # project out the euclidean  transforms
+    euclid_transforms = get_rigid_transformations(mesh[0])
+    euclid_projector = get_complement_space(euclid_transforms)
+    
+    projected_disp = normalizeVec(np.dot(euclid_projector, desired_disp.flatten()))    
+    
+    
+    disp, disp_energy= check_energy(desired_disp[:face_verts.size], mesh, k)
+    
+    projected_disp = normalizeVec(np.dot(euclid_projector, disp)) 
+    
+    
+    print("eigenvalues: ", lowestEigenVals(dyn_mat, 2, 4))
+    print("result energy: " , disp_energy)
     
     
     
+    dot_product = np.dot(projected_disp[:8], lowestEigVector[:8])
+    print("desired dot product: ", dot_product, "\n\n")
     
+    projected_disp[:8] *= np.sign(dot_product)
+    
+    print("differece:", (projected_disp[:8] - lowestEigVector[:8])  ) 
+    
+    
+    if dot_product*np.sign(dot_product) < 0.995: return True
+
+    return False;
+
+
+
+
+def check_energy(original_disps, mesh, k):
+    
+    num_of_verts = mesh[0].size//2
+    
+    disps = npr.rand(num_of_verts*2)
+    
+    disps[:original_disps.size] = original_disps
+    
+    euclid_transforms = get_rigid_transformations(mesh[0])
+    euclid_projector = get_complement_space(euclid_transforms)
+    
+    projected_disp = normalizeVec(np.dot(euclid_projector, disps))    
+    
+    # project out the euclidean  transforms
+    
+    
+    dyn_mat = makeDynamicalMat(verts=mesh[0], edgeArray=mesh[1], springK=k)
+    
+    res = op.minimize(energy, projected_disp, method='Newton-CG', args=(dyn_mat, euclid_projector, original_disps), jac=energy_Der, 
+                       hess=energy_Hess, options={'xtol': 1e-8, 'disp': False})
+    
+    return res.x, res.fun
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
